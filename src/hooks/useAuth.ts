@@ -11,15 +11,19 @@ export function useAuth() {
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session)
-      if (session) loadProfile(session.user.id)
-      else setLoading(false)
+      if (session) {
+        loadProfile(session.user.id)
+      } else {
+        setLoading(false)
+      }
     })
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       (_event, session) => {
         setSession(session)
-        if (session) loadProfile(session.user.id)
-        else {
+        if (session) {
+          loadProfile(session.user.id)
+        } else {
           setProfile(null)
           setLoading(false)
         }
@@ -35,7 +39,9 @@ export function useAuth() {
       .select('*')
       .eq('id', userId)
       .single()
-    setProfile(data)
+
+    // 프로필이 없어도 (Google 최초 로그인 등) 로딩은 종료
+    setProfile(data || null)
     setLoading(false)
   }
 
