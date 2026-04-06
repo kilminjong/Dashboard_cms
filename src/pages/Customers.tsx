@@ -58,7 +58,7 @@ export default function Customers() {
   }, [])
 
   const loadCustomers = async () => {
-    const { data, count } = await supabase
+    const { data } = await supabase
       .from('customers')
       .select('*', { count: 'exact' })
       .order('created_at', { ascending: false })
