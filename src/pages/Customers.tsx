@@ -58,10 +58,11 @@ export default function Customers() {
   }, [])
 
   const loadCustomers = async () => {
-    const { data } = await supabase
+    const { data, count } = await supabase
       .from('customers')
-      .select('*')
+      .select('*', { count: 'exact' })
       .order('created_at', { ascending: false })
+      .range(0, 9999)
     setCustomers(data || [])
     setLoading(false)
   }
