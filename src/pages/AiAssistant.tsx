@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../hooks/useAuth'
 import { Send, Bot, User, Trash2, Sparkles } from 'lucide-react'
@@ -11,17 +12,23 @@ interface Message {
   timestamp: Date
 }
 
+interface CustomerRef {
+  id: string
+  name: string
+}
+
 const QUICK_PROMPTS = [
   '이번 달 신규 고객 몇 명이야?',
   '개설 안 된 고객 목록 보여줘',
   '내 담당 고객 현황 알려줘',
   '신규 고객 환영 이메일 초안 작성해줘',
   '이번 주 일정 알려줘',
-  'CMS 시스템 사용법 알려줘',
+  'SQL 쿼리 정리해줘',
 ]
 
 export default function AiAssistant() {
   const { profile } = useAuth()
+  const navigate = useNavigate()
   const [messages, setMessages] = useState<Message[]>(() => {
     const saved = sessionStorage.getItem('ai_chat_messages')
     if (saved) {
@@ -31,6 +38,7 @@ export default function AiAssistant() {
   })
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
+  const [customerRefs, setCustomerRefs] = useState<CustomerRef[]>([])
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
 
@@ -61,7 +69,7 @@ export default function AiAssistant() {
 
       const { data: allCustomers } = await supabase
         .from('customers')
-        .select('customer_name, opening_status, manager, reception_date, connection_status, erp_company, business_number, customer_number, erp_type, connection_method, opening_date, connection_date')
+        .select('id, customer_name, opening_status, manager, reception_date, connection_status, erp_company, business_number, customer_number, erp_type, connection_method, opening_date, connection_date')
         .range(0, 9999)
 
       const today = new Date().toISOString().split('T')[0]
@@ -72,32 +80,52 @@ export default function AiAssistant() {
         .order('start_date')
         .limit(20)
 
-      // 사용자 질문에서 키워드 추출 후 관련 고객 필터링
       const userMsg = msg.toLowerCase()
       const customers = allCustomers || []
 
+      // 질문 키워드 기반 필터링
       let filteredCustomers = customers
-      if (userMsg.includes('개설 안') || userMsg.includes('미개설') || userMsg.includes('개설되지') || userMsg.includes('개설대기')) {
-        filteredCustomers = customers.filter((c) => c.opening_status !== '개설완료' && c.opening_status !== '이행완료')
-      } else if (userMsg.includes('개설완료') || userMsg.includes('개설 완료')) {
-        filteredCustomers = customers.filter((c) => c.opening_status === '개설완료' || c.opening_status === '이행완료')
-      } else if (userMsg.includes('개설취소') || userMsg.includes('취소')) {
+
+      // 개설 상태 필터
+      if (userMsg.includes('개설 안') || userMsg.includes('미개설') || userMsg.includes('개설되지') || userMsg.includes('아직') || userMsg.includes('개설전')) {
+        filteredCustomers = customers.filter((c) =>
+          c.opening_status !== '개설완료' && c.opening_status !== '이행완료'
+        )
+      } else if (userMsg.includes('개설완료') || userMsg.includes('개설 완료') || userMsg.includes('완료된')) {
+        filteredCustomers = customers.filter((c) =>
+          c.opening_status === '개설완료' || c.opening_status === '이행완료'
+        )
+      } else if (userMsg.includes('개설취소') || userMsg.includes('취소된')) {
         filteredCustomers = customers.filter((c) => c.opening_status === '개설취소')
-      } else if (userMsg.includes('개설진행') || userMsg.includes('진행')) {
+      } else if (userMsg.includes('개설진행') || userMsg.includes('진행중') || userMsg.includes('진행 중')) {
         filteredCustomers = customers.filter((c) => c.opening_status === '개설진행')
+      } else if (userMsg.includes('개설대기') || userMsg.includes('대기')) {
+        filteredCustomers = customers.filter((c) => c.opening_status === '개설대기')
       }
 
       // 담당자 필터
-      const managerMatch = userMsg.match(/담당자\s*(\S+?)(?:\s|$|의|가|를)/)
-      if (managerMatch) {
-        const keyword = managerMatch[1]
-        filteredCustomers = filteredCustomers.filter((c) => c.manager?.includes(keyword))
-      }
       if (userMsg.includes('내 담당') || userMsg.includes('나의 담당') || userMsg.includes('내가 담당')) {
-        filteredCustomers = customers.filter((c) => c.manager === (profile?.name || ''))
+        filteredCustomers = filteredCustomers.filter((c) => c.manager === (profile?.name || ''))
+      } else {
+        const managerMatch = userMsg.match(/담당자?\s*(\S{2,4})/)
+        if (managerMatch) {
+          const keyword = managerMatch[1]
+          filteredCustomers = filteredCustomers.filter((c) => c.manager?.includes(keyword))
+        }
       }
 
-      // 통계 요약 생성
+      // 고객명 검색
+      const nameMatch = userMsg.match(/['"](.+?)['"]/) || userMsg.match(/고객\s+(\S+)/)
+      if (nameMatch && !userMsg.includes('목록') && !userMsg.includes('현황')) {
+        const keyword = nameMatch[1]
+        filteredCustomers = customers.filter((c) => c.customer_name?.includes(keyword))
+      }
+
+      // 고객 참조 맵 저장 (클릭 링크용)
+      const refs = filteredCustomers.map((c) => ({ id: c.id, name: c.customer_name }))
+      setCustomerRefs(refs)
+
+      // 통계
       const stats = {
         total: customers.length,
         opened: customers.filter((c) => c.opening_status === '개설완료' || c.opening_status === '이행완료').length,
@@ -168,7 +196,40 @@ export default function AiAssistant() {
 
   const clearChat = () => {
     setMessages([])
+    setCustomerRefs([])
     sessionStorage.removeItem('ai_chat_messages')
+  }
+
+  // 고객명을 클릭 가능한 링크로 변환
+  const renderTextWithCustomerLinks = (text: string) => {
+    if (customerRefs.length === 0) return text
+
+    const parts: (string | React.ReactElement)[] = []
+    let remaining = text
+
+    // 고객명 길이 긴 순서로 정렬 (긴 이름 먼저 매칭)
+    const sortedRefs = [...customerRefs].sort((a, b) => b.name.length - a.name.length)
+
+    for (const ref of sortedRefs) {
+      if (!ref.name) continue
+      const idx = remaining.indexOf(ref.name)
+      if (idx !== -1) {
+        if (idx > 0) parts.push(remaining.substring(0, idx))
+        parts.push(
+          <button
+            key={ref.id + idx}
+            onClick={() => navigate(`/customers/${ref.id}`)}
+            className="text-emerald-600 font-medium hover:underline cursor-pointer"
+          >
+            {ref.name}
+          </button>
+        )
+        remaining = remaining.substring(idx + ref.name.length)
+      }
+    }
+    if (remaining) parts.push(remaining)
+
+    return parts.length > 1 ? <>{parts}</> : text
   }
 
   return (
@@ -206,7 +267,7 @@ export default function AiAssistant() {
               <h3 className="text-lg font-semibold text-gray-700 mb-2">무엇을 도와드릴까요?</h3>
               <p className="text-sm text-gray-400 mb-6 max-w-sm">
                 고객 데이터 조회, 현황 분석, 이메일/제안서 초안 작성,<br />
-                SQL 쿼리 정리 등 업무에 관한 모든 것을 물어보세요.
+                SQL 쿼리 정리 등 어떤 질문이든 물어보세요.
               </p>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 w-full max-w-lg">
@@ -230,7 +291,7 @@ export default function AiAssistant() {
                       <Bot size={16} className="text-emerald-600" />
                     </div>
                   )}
-                  <div className={`max-w-[85%] sm:max-w-[75%] ${
+                  <div className={`max-w-[90%] sm:max-w-[80%] ${
                     msg.role === 'user'
                       ? 'bg-emerald-600 text-white rounded-2xl rounded-tr-md'
                       : 'bg-gray-50 text-gray-800 rounded-2xl rounded-tl-md border border-gray-100'
@@ -243,7 +304,12 @@ export default function AiAssistant() {
                             h1: ({ children }) => <h1 className="text-lg font-bold text-gray-800 mt-3 mb-2 first:mt-0">{children}</h1>,
                             h2: ({ children }) => <h2 className="text-base font-bold text-gray-800 mt-3 mb-1.5 first:mt-0">{children}</h2>,
                             h3: ({ children }) => <h3 className="text-sm font-bold text-gray-700 mt-2 mb-1 first:mt-0">{children}</h3>,
-                            p: ({ children }) => <p className="mb-2 last:mb-0 text-gray-700">{children}</p>,
+                            p: ({ children }) => {
+                              if (typeof children === 'string') {
+                                return <p className="mb-2 last:mb-0 text-gray-700">{renderTextWithCustomerLinks(children)}</p>
+                              }
+                              return <p className="mb-2 last:mb-0 text-gray-700">{children}</p>
+                            },
                             ul: ({ children }) => <ul className="mb-2 ml-4 space-y-0.5 list-disc text-gray-700">{children}</ul>,
                             ol: ({ children }) => <ol className="mb-2 ml-4 space-y-0.5 list-decimal text-gray-700">{children}</ol>,
                             li: ({ children }) => <li className="text-sm">{children}</li>,
@@ -262,14 +328,32 @@ export default function AiAssistant() {
                             },
                             pre: ({ children }) => <div className="my-2">{children}</div>,
                             table: ({ children }) => (
-                              <div className="overflow-x-auto my-2 rounded-lg border border-gray-200">
+                              <div className="overflow-x-auto my-3 rounded-lg border border-gray-200">
                                 <table className="w-full text-sm">{children}</table>
                               </div>
                             ),
                             thead: ({ children }) => <thead className="bg-emerald-50">{children}</thead>,
-                            th: ({ children }) => <th className="px-3 py-2 text-left text-xs font-semibold text-emerald-700 border-b border-gray-200">{children}</th>,
-                            td: ({ children }) => <td className="px-3 py-2 text-xs text-gray-700 border-b border-gray-50">{children}</td>,
-                            tr: ({ children }) => <tr className="hover:bg-gray-50">{children}</tr>,
+                            th: ({ children }) => <th className="px-3 py-2 text-left text-xs font-semibold text-emerald-700 border-b border-gray-200 whitespace-nowrap">{children}</th>,
+                            td: ({ children }) => {
+                              // 테이블 셀 안 고객명을 클릭 가능하게
+                              if (typeof children === 'string') {
+                                const ref = customerRefs.find((r) => r.name === children)
+                                if (ref) {
+                                  return (
+                                    <td className="px-3 py-2 text-xs border-b border-gray-50 whitespace-nowrap">
+                                      <button
+                                        onClick={() => navigate(`/customers/${ref.id}`)}
+                                        className="text-emerald-600 font-medium hover:underline"
+                                      >
+                                        {children}
+                                      </button>
+                                    </td>
+                                  )
+                                }
+                              }
+                              return <td className="px-3 py-2 text-xs text-gray-700 border-b border-gray-50 whitespace-nowrap">{children}</td>
+                            },
+                            tr: ({ children }) => <tr className="hover:bg-gray-50 transition">{children}</tr>,
                             hr: () => <hr className="my-3 border-gray-200" />,
                             blockquote: ({ children }) => (
                               <blockquote className="border-l-3 border-emerald-400 bg-emerald-50/50 pl-3 py-1 my-2 text-sm text-gray-600 rounded-r-lg">
