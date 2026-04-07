@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
+import { Mail, ArrowLeft } from 'lucide-react'
 
 export default function Login() {
   const navigate = useNavigate()
@@ -8,8 +9,11 @@ export default function Login() {
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
+  const [showReset, setShowReset] = useState(false)
+  const [resetEmail, setResetEmail] = useState('')
+  const [resetSent, setResetSent] = useState(false)
+  const [resetLoading, setResetLoading] = useState(false)
 
-  // 이미 로그인된 상태면 대시보드로 이동
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (session) navigate('/')
@@ -24,7 +28,13 @@ export default function Login() {
     const { error } = await supabase.auth.signInWithPassword({ email, password })
 
     if (error) {
-      setError('이메일 또는 비밀번호가 올바르지 않습니다.')
+      if (error.message.includes('Email not confirmed')) {
+        setError('이메일 인증이 완료되지 않았습니다. 가입 시 입력한 이메일의 인증 메일을 확인해주세요.')
+      } else if (error.message.includes('Invalid login credentials')) {
+        setError('이메일 또는 비밀번호가 올바르지 않습니다.')
+      } else {
+        setError(error.message)
+      }
       setLoading(false)
       return
     }
@@ -41,6 +51,87 @@ export default function Login() {
     })
   }
 
+  const handleResetPassword = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setResetLoading(true)
+    setError('')
+
+    const { error } = await supabase.auth.resetPasswordForEmail(resetEmail, {
+      redirectTo: `${window.location.origin}/login`,
+    })
+
+    if (error) {
+      setError(error.message)
+    } else {
+      setResetSent(true)
+    }
+    setResetLoading(false)
+  }
+
+  // 비밀번호 재설정 화면
+  if (showReset) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-emerald-50 to-teal-100 flex items-center justify-center p-4">
+        <div className="w-full max-w-md bg-white rounded-2xl shadow-lg p-8">
+          <button
+            onClick={() => { setShowReset(false); setResetSent(false); setError('') }}
+            className="flex items-center gap-1 text-sm text-gray-500 hover:text-gray-700 mb-6"
+          >
+            <ArrowLeft size={16} /> 로그인으로 돌아가기
+          </button>
+
+          <div className="text-center mb-8">
+            <div className="w-16 h-16 bg-emerald-100 rounded-full flex items-center justify-center mx-auto mb-4">
+              <Mail size={28} className="text-emerald-600" />
+            </div>
+            <h1 className="text-2xl font-bold text-gray-800">비밀번호 재설정</h1>
+            <p className="text-gray-500 text-sm mt-2">
+              가입한 이메일을 입력하면 비밀번호 재설정 링크를 보내드립니다.
+            </p>
+          </div>
+
+          {resetSent ? (
+            <div className="text-center py-4">
+              <div className="w-12 h-12 bg-emerald-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                <Mail size={24} className="text-emerald-600" />
+              </div>
+              <p className="text-emerald-700 font-medium mb-2">이메일이 발송되었습니다!</p>
+              <p className="text-gray-500 text-sm">
+                <strong>{resetEmail}</strong>로 비밀번호 재설정 링크를 보냈습니다.<br />
+                이메일을 확인해주세요. (스팸함도 확인)
+              </p>
+            </div>
+          ) : (
+            <form onSubmit={handleResetPassword} className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">이메일</label>
+                <input
+                  type="email"
+                  value={resetEmail}
+                  onChange={(e) => setResetEmail(e.target.value)}
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent outline-none transition"
+                  placeholder="example@webcash.co.kr"
+                  required
+                />
+              </div>
+
+              {error && <p className="text-red-500 text-sm">{error}</p>}
+
+              <button
+                type="submit"
+                disabled={resetLoading}
+                className="w-full py-3 bg-emerald-600 text-white rounded-lg font-medium hover:bg-emerald-700 disabled:opacity-50 transition"
+              >
+                {resetLoading ? '발송 중...' : '재설정 링크 보내기'}
+              </button>
+            </form>
+          )}
+        </div>
+      </div>
+    )
+  }
+
+  // 로그인 화면
   return (
     <div className="min-h-screen bg-gradient-to-br from-emerald-50 to-teal-100 flex items-center justify-center p-4">
       <div className="w-full max-w-md bg-white rounded-2xl shadow-lg p-8">
@@ -97,7 +188,11 @@ export default function Login() {
             />
           </div>
 
-          {error && <p className="text-red-500 text-sm">{error}</p>}
+          {error && (
+            <div className="bg-red-50 border border-red-200 rounded-lg p-3">
+              <p className="text-red-600 text-sm">{error}</p>
+            </div>
+          )}
 
           <button
             type="submit"
@@ -108,12 +203,17 @@ export default function Login() {
           </button>
         </form>
 
-        <p className="text-center text-sm text-gray-500 mt-6">
-          계정이 없으신가요?{' '}
-          <Link to="/signup" className="text-emerald-600 font-medium hover:underline">
+        <div className="flex items-center justify-between mt-6">
+          <button
+            onClick={() => { setShowReset(true); setError('') }}
+            className="text-sm text-gray-500 hover:text-emerald-600 transition"
+          >
+            비밀번호를 잊으셨나요?
+          </button>
+          <Link to="/signup" className="text-sm text-emerald-600 font-medium hover:underline">
             회원가입
           </Link>
-        </p>
+        </div>
       </div>
     </div>
   )
