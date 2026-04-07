@@ -2,10 +2,16 @@ import { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import type { Customer, CustomerMemo, CustomerHistory } from '../types'
-import { ArrowLeft, Save, Plus, Sparkles, RefreshCw, Clock } from 'lucide-react'
+import { ArrowLeft, Save, Plus, Sparkles, RefreshCw, Clock, Building2, Server, UserCircle, FileText, MessageSquare } from 'lucide-react'
 
-const TABS = ['기본정보', 'ERP정보', '담당자', '계약현황', '메모'] as const
-type Tab = typeof TABS[number]
+const TABS = [
+  { key: '기본정보', icon: Building2 },
+  { key: 'ERP정보', icon: Server },
+  { key: '담당자', icon: UserCircle },
+  { key: '계약현황', icon: FileText },
+  { key: '메모', icon: MessageSquare },
+] as const
+type Tab = typeof TABS[number]['key']
 
 const FIELD_GROUPS: Record<string, { key: string; label: string; type?: string }[]> = {
   '기본정보': [
@@ -50,6 +56,15 @@ Object.values(FIELD_GROUPS).forEach((fields) => {
   fields.forEach((f) => { FIELD_LABELS[f.key] = f.label })
 })
 
+const statusBadge = (status: string) => {
+  if (!status) return 'bg-gray-100 text-gray-600'
+  if (status === '개설완료' || status === '이행완료') return 'bg-emerald-100 text-emerald-700'
+  if (status === '개설대기') return 'bg-amber-100 text-amber-700'
+  if (status === '개설진행') return 'bg-blue-100 text-blue-700'
+  if (status === '개설취소') return 'bg-red-100 text-red-700'
+  return 'bg-gray-100 text-gray-600'
+}
+
 export default function CustomerDetail() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
@@ -62,16 +77,13 @@ export default function CustomerDetail() {
   const [saving, setSaving] = useState(false)
   const [loading, setLoading] = useState(true)
 
-  // 메모
   const [memos, setMemos] = useState<CustomerMemo[]>([])
   const [newMemo, setNewMemo] = useState('')
   const [memoLoading, setMemoLoading] = useState(false)
 
-  // AI 요약
   const [aiMemoSummary, setAiMemoSummary] = useState('')
   const [aiMemoLoading, setAiMemoLoading] = useState(false)
 
-  // 변경 이력
   const [history, setHistory] = useState<CustomerHistory[]>([])
 
   useEffect(() => {
@@ -126,7 +138,6 @@ export default function CustomerDetail() {
 
     const { data: { user } } = await supabase.auth.getUser()
 
-    // 변경된 필드만 이력 저장
     const changes: { field_name: string; old_value: string; new_value: string }[] = []
     Object.keys(form).forEach((key) => {
       if (form[key] !== originalForm[key]) {
@@ -138,13 +149,11 @@ export default function CustomerDetail() {
       }
     })
 
-    // 고객 정보 업데이트
     await supabase
       .from('customers')
       .update({ ...form, updated_at: new Date().toISOString() })
       .eq('id', customer.id)
 
-    // 변경 이력 저장
     if (changes.length > 0 && user) {
       await supabase.from('customer_history').insert(
         changes.map((c) => ({
@@ -160,6 +169,7 @@ export default function CustomerDetail() {
     setOriginalForm({ ...form })
     setEditing(false)
     setSaving(false)
+    loadCustomer()
     loadHistory()
   }
 
@@ -199,10 +209,6 @@ export default function CustomerDetail() {
           'apikey': supabaseAnonKey,
         },
         body: JSON.stringify({
-          todaySchedules: [],
-          recentCustomers: [],
-          managerName: '',
-          date: new Date().toISOString().split('T')[0],
           memoSummaryRequest: true,
           customerName: customer?.customer_name || '',
           memos: memos.map((m) => ({
@@ -228,87 +234,130 @@ export default function CustomerDetail() {
   }
 
   if (loading) {
-    return <div className="text-center py-8 text-gray-400">불러오는 중...</div>
+    return (
+      <div className="flex items-center justify-center py-20">
+        <RefreshCw size={24} className="animate-spin text-emerald-500" />
+      </div>
+    )
   }
 
   if (!customer) {
-    return <div className="text-center py-8 text-gray-400">고객 정보를 찾을 수 없습니다.</div>
+    return (
+      <div className="text-center py-20">
+        <p className="text-gray-400 mb-4">고객 정보를 찾을 수 없습니다.</p>
+        <button onClick={() => navigate('/customers')} className="text-emerald-600 hover:underline text-sm">
+          목록으로 돌아가기
+        </button>
+      </div>
+    )
   }
 
   return (
-    <div>
-      {/* 헤더 */}
-      <div className="flex items-center gap-3 mb-6">
-        <button onClick={() => navigate('/customers')} className="p-2 hover:bg-gray-100 rounded-lg transition">
-          <ArrowLeft size={20} className="text-gray-600" />
-        </button>
-        <div className="flex-1">
-          <h2 className="text-2xl font-bold text-gray-800">{customer.customer_name}</h2>
-          <p className="text-sm text-gray-500">{customer.business_number || '사업자번호 없음'} · {customer.manager || '담당자 미지정'}</p>
-        </div>
-        {editing ? (
-          <div className="flex gap-2">
-            <button
-              onClick={() => { setEditing(false); setForm({ ...originalForm }) }}
-              className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition text-sm"
-            >
-              취소
-            </button>
-            <button
-              onClick={handleSave}
-              disabled={saving}
-              className="flex items-center gap-1.5 px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition text-sm"
-            >
-              <Save size={16} />
-              {saving ? '저장 중...' : '저장'}
-            </button>
-          </div>
-        ) : (
-          <button
-            onClick={() => setEditing(true)}
-            className="px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition text-sm"
-          >
-            수정
+    <div className="max-w-4xl mx-auto">
+      {/* 헤더 카드 */}
+      <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5 mb-5">
+        <div className="flex items-start gap-4">
+          <button onClick={() => navigate('/customers')} className="p-2 hover:bg-gray-100 rounded-lg transition mt-0.5 shrink-0">
+            <ArrowLeft size={20} className="text-gray-500" />
           </button>
-        )}
+
+          <div className="flex-1 min-w-0">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+              <div>
+                <h2 className="text-xl font-bold text-gray-800 truncate">{customer.customer_name}</h2>
+                <div className="flex flex-wrap items-center gap-2 mt-1.5">
+                  <span className="text-sm text-gray-500">{customer.business_number || '사업자번호 없음'}</span>
+                  <span className="text-gray-300">·</span>
+                  <span className="text-sm text-gray-500">{customer.manager || '담당자 미지정'}</span>
+                  {customer.opening_status && (
+                    <>
+                      <span className="text-gray-300">·</span>
+                      <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${statusBadge(customer.opening_status)}`}>
+                        {customer.opening_status}
+                      </span>
+                    </>
+                  )}
+                </div>
+              </div>
+
+              {editing ? (
+                <div className="flex gap-2 shrink-0">
+                  <button
+                    onClick={() => { setEditing(false); setForm({ ...originalForm }) }}
+                    className="px-4 py-2 border border-gray-300 text-gray-600 rounded-lg hover:bg-gray-50 transition text-sm"
+                  >
+                    취소
+                  </button>
+                  <button
+                    onClick={handleSave}
+                    disabled={saving}
+                    className="flex items-center gap-1.5 px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition text-sm"
+                  >
+                    <Save size={15} />
+                    {saving ? '저장 중...' : '저장'}
+                  </button>
+                </div>
+              ) : (
+                <button
+                  onClick={() => setEditing(true)}
+                  className="px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition text-sm shrink-0"
+                >
+                  수정
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
       </div>
 
       {/* 탭 */}
-      <div className="flex overflow-x-auto border-b border-gray-200 mb-6 -mx-1">
-        {TABS.map((tab) => (
-          <button
-            key={tab}
-            onClick={() => setActiveTab(tab)}
-            className={`px-4 py-2.5 text-sm font-medium whitespace-nowrap transition border-b-2 mx-1 ${
-              activeTab === tab
-                ? 'border-emerald-600 text-emerald-600'
-                : 'border-transparent text-gray-500 hover:text-gray-700'
-            }`}
-          >
-            {tab}
-          </button>
-        ))}
+      <div className="bg-white rounded-xl shadow-sm border border-gray-100 mb-5 overflow-hidden">
+        <div className="flex overflow-x-auto">
+          {TABS.map((tab) => (
+            <button
+              key={tab.key}
+              onClick={() => setActiveTab(tab.key)}
+              className={`flex items-center gap-1.5 px-4 py-3 text-sm font-medium whitespace-nowrap transition border-b-2 flex-1 justify-center min-w-0 ${
+                activeTab === tab.key
+                  ? 'border-emerald-600 text-emerald-600 bg-emerald-50/50'
+                  : 'border-transparent text-gray-400 hover:text-gray-600 hover:bg-gray-50'
+              }`}
+            >
+              <tab.icon size={15} />
+              <span className="hidden sm:inline">{tab.key}</span>
+              <span className="sm:hidden text-xs">{tab.key}</span>
+            </button>
+          ))}
+        </div>
       </div>
 
-      {/* 탭 내용: 기본정보 / ERP정보 / 담당자 / 계약현황 */}
+      {/* 탭 내용: 필드 그룹 */}
       {activeTab !== '메모' && FIELD_GROUPS[activeTab] && (
-        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+          <div className="divide-y divide-gray-50">
             {FIELD_GROUPS[activeTab].map((field) => (
-              <div key={field.key}>
-                <label className="block text-sm font-medium text-gray-500 mb-1">{field.label}</label>
-                {editing ? (
-                  <input
-                    type={field.type || 'text'}
-                    value={form[field.key] || ''}
-                    onChange={(e) => setForm({ ...form, [field.key]: e.target.value })}
-                    className="w-full px-3 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent outline-none text-sm"
-                  />
-                ) : (
-                  <p className="px-3 py-2.5 bg-gray-50 rounded-lg text-sm text-gray-800 min-h-[42px]">
-                    {form[field.key] || '-'}
-                  </p>
-                )}
+              <div key={field.key} className="flex flex-col sm:flex-row sm:items-center px-5 py-3.5 gap-1 sm:gap-0">
+                <label className="text-sm font-medium text-gray-500 sm:w-40 shrink-0">{field.label}</label>
+                <div className="flex-1">
+                  {editing ? (
+                    <input
+                      type={field.type || 'text'}
+                      value={form[field.key] || ''}
+                      onChange={(e) => setForm({ ...form, [field.key]: e.target.value })}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent outline-none text-sm"
+                    />
+                  ) : (
+                    <span className="text-sm text-gray-800">
+                      {field.key === 'opening_status' && form[field.key] ? (
+                        <span className={`px-2.5 py-1 rounded-full text-xs font-medium ${statusBadge(form[field.key])}`}>
+                          {form[field.key]}
+                        </span>
+                      ) : (
+                        form[field.key] || <span className="text-gray-300">-</span>
+                      )}
+                    </span>
+                  )}
+                </div>
               </div>
             ))}
           </div>
@@ -320,7 +369,7 @@ export default function CustomerDetail() {
         <div className="space-y-4">
           {/* AI 요약 */}
           <div className="bg-gradient-to-r from-emerald-50 to-teal-50 border border-emerald-200 rounded-xl p-4">
-            <div className="flex items-start justify-between mb-2">
+            <div className="flex items-center justify-between mb-2">
               <div className="flex items-center gap-2">
                 <Sparkles size={16} className="text-emerald-600" />
                 <span className="text-sm font-medium text-emerald-700">AI 메모 요약</span>
@@ -337,11 +386,10 @@ export default function CustomerDetail() {
                 )}
               </button>
             </div>
-            {aiMemoSummary && (
-              <p className="text-sm text-gray-700 leading-relaxed mt-2">{aiMemoSummary}</p>
-            )}
-            {!aiMemoSummary && !aiMemoLoading && (
-              <p className="text-sm text-gray-400 mt-2">AI 자동 요약 버튼을 눌러 메모를 요약해보세요.</p>
+            {aiMemoSummary ? (
+              <p className="text-sm text-gray-700 leading-relaxed bg-white/60 rounded-lg p-3 mt-2">{aiMemoSummary}</p>
+            ) : (
+              <p className="text-sm text-emerald-600/60 mt-2">AI 자동 요약 버튼을 눌러 메모를 요약해보세요.</p>
             )}
           </div>
 
@@ -351,53 +399,60 @@ export default function CustomerDetail() {
               value={newMemo}
               onChange={(e) => setNewMemo(e.target.value)}
               rows={3}
-              className="w-full px-3 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent outline-none text-sm resize-none"
-              placeholder="메모를 입력하세요 (영업 이력, 특이사항 등)"
+              className="w-full px-3 py-2.5 border border-gray-200 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent outline-none text-sm resize-none placeholder-gray-300"
+              placeholder="메모를 입력하세요 (영업 이력, 특이사항, 통화 내용 등)"
             />
             <div className="flex justify-end mt-2">
               <button
                 onClick={handleAddMemo}
                 disabled={memoLoading || !newMemo.trim()}
-                className="flex items-center gap-1.5 px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 disabled:opacity-50 transition text-sm"
+                className="flex items-center gap-1.5 px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 disabled:opacity-40 transition text-sm"
               >
-                <Plus size={16} />
+                <Plus size={15} />
                 {memoLoading ? '저장 중...' : '메모 추가'}
               </button>
             </div>
           </div>
 
-          {/* 메모 목록 */}
-          <div className="space-y-3">
+          {/* 메모 타임라인 */}
+          <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+            <div className="px-5 py-3 border-b border-gray-100">
+              <h4 className="text-sm font-semibold text-gray-700">메모 기록 ({memos.length}건)</h4>
+            </div>
             {memos.length === 0 ? (
-              <p className="text-center py-8 text-gray-400">등록된 메모가 없습니다.</p>
+              <p className="text-center py-10 text-gray-300 text-sm">등록된 메모가 없습니다.</p>
             ) : (
-              memos.map((memo) => (
-                <div key={memo.id} className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
-                  <p className="text-sm text-gray-800 whitespace-pre-wrap">{memo.content}</p>
-                  <p className="text-xs text-gray-400 mt-2">
-                    {new Date(memo.created_at).toLocaleString('ko-KR')}
-                  </p>
-                </div>
-              ))
+              <div className="divide-y divide-gray-50">
+                {memos.map((memo) => (
+                  <div key={memo.id} className="px-5 py-4">
+                    <p className="text-sm text-gray-800 whitespace-pre-wrap leading-relaxed">{memo.content}</p>
+                    <p className="text-xs text-gray-400 mt-2">
+                      {new Date(memo.created_at).toLocaleString('ko-KR')}
+                    </p>
+                  </div>
+                ))}
+              </div>
             )}
           </div>
 
           {/* 변경 이력 */}
           {history.length > 0 && (
-            <div className="bg-white rounded-xl shadow-sm border border-gray-100">
-              <div className="px-4 py-3 border-b border-gray-100 flex items-center gap-2">
-                <Clock size={16} className="text-gray-400" />
+            <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+              <div className="px-5 py-3 border-b border-gray-100 flex items-center gap-2">
+                <Clock size={15} className="text-gray-400" />
                 <h4 className="text-sm font-semibold text-gray-700">변경 이력</h4>
               </div>
-              <div className="divide-y divide-gray-50 max-h-[300px] overflow-y-auto">
+              <div className="divide-y divide-gray-50 max-h-[350px] overflow-y-auto">
                 {history.map((h) => (
-                  <div key={h.id} className="px-4 py-3">
-                    <p className="text-sm text-gray-700">
-                      <span className="font-medium text-gray-800">{h.field_name}</span>
-                      {' '}변경: <span className="text-red-500 line-through">{h.old_value || '(없음)'}</span>
-                      {' → '}<span className="text-emerald-600">{h.new_value || '(없음)'}</span>
-                    </p>
-                    <p className="text-xs text-gray-400 mt-0.5">
+                  <div key={h.id} className="px-5 py-3">
+                    <div className="flex flex-wrap items-center gap-1.5 text-sm">
+                      <span className="font-medium text-gray-700 bg-gray-100 px-2 py-0.5 rounded">{h.field_name}</span>
+                      <span className="text-gray-400">:</span>
+                      <span className="text-red-400 line-through text-xs">{h.old_value || '(없음)'}</span>
+                      <span className="text-gray-400">→</span>
+                      <span className="text-emerald-600 font-medium text-xs">{h.new_value || '(없음)'}</span>
+                    </div>
+                    <p className="text-xs text-gray-400 mt-1">
                       {new Date(h.changed_at).toLocaleString('ko-KR')}
                     </p>
                   </div>
