@@ -8,12 +8,14 @@ import {
   LogOut,
   Menu,
   X,
+  Bot,
 } from 'lucide-react'
 import { useState } from 'react'
 
 const navItems = [
   { to: '/', icon: LayoutDashboard, label: '대시보드' },
   { to: '/customers', icon: Users, label: '고객정보관리' },
+  { to: '/ai-assistant', icon: Bot, label: 'AI 어시스턴트' },
   { to: '/calendar', icon: Calendar, label: '캘린더' },
   { to: '/profile', icon: UserCog, label: '정보수정' },
 ]
