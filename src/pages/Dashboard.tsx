@@ -29,14 +29,19 @@ export default function Dashboard() {
   })
   const [recentCustomers, setRecentCustomers] = useState<any[]>([])
   const [monthlyData, setMonthlyData] = useState<MonthlyData[]>([])
-  const [aiSummary, setAiSummary] = useState('')
+  const [aiSummary, setAiSummary] = useState(() => {
+    return sessionStorage.getItem('ai_summary') || ''
+  })
   const [aiLoading, setAiLoading] = useState(false)
 
   useEffect(() => {
     loadStats()
     loadRecentCustomers()
     loadMonthlyTrend()
-    loadAiSummary()
+    // 캐시된 요약이 없을 때만 AI 호출
+    if (!sessionStorage.getItem('ai_summary')) {
+      loadAiSummary()
+    }
   }, [])
 
   const loadStats = async () => {
@@ -124,15 +129,19 @@ export default function Dashboard() {
 
       const text = await res.text()
       if (!res.ok) {
-        setAiSummary(`[디버그 ${res.status}] ${text}`)
+        console.error(`[AI 요약 에러 ${res.status}]`, text)
+        setAiSummary('오류가 발생했습니다. 관리자에게 문의해주세요.')
         setAiLoading(false)
         return
       }
 
       const data = JSON.parse(text)
-      setAiSummary(data?.summary || '오늘의 업무 요약을 불러올 수 없습니다.')
+      const summary = data?.summary || '오늘의 업무 요약을 불러올 수 없습니다.'
+      setAiSummary(summary)
+      sessionStorage.setItem('ai_summary', summary)
     } catch (err: any) {
-      setAiSummary(`[디버그] ${err.message || '알 수 없는 오류'}`)
+      console.error('[AI 요약 에러]', err)
+      setAiSummary('오류가 발생했습니다. 관리자에게 문의해주세요.')
     }
     setAiLoading(false)
   }
@@ -177,7 +186,7 @@ export default function Dashboard() {
             </div>
           </div>
           <button
-            onClick={loadAiSummary}
+            onClick={() => { sessionStorage.removeItem('ai_summary'); loadAiSummary() }}
             disabled={aiLoading}
             className="p-1.5 text-emerald-500 hover:text-emerald-700 hover:bg-emerald-100 rounded-lg transition"
             title="다시 분석"
