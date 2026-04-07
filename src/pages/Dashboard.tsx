@@ -103,16 +103,33 @@ export default function Dashboard() {
         .order('created_at', { ascending: false })
         .limit(5)
 
-      // Edge Function 호출
-      const { data, error } = await supabase.functions.invoke('ai-summary', {
-        body: {
+      // Edge Function 직접 호출 (디버그용)
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
+      const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY
+      const { data: { session } } = await supabase.auth.getSession()
+
+      const res = await fetch(`${supabaseUrl}/functions/v1/ai-summary`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session?.access_token || supabaseAnonKey}`,
+          'apikey': supabaseAnonKey,
+        },
+        body: JSON.stringify({
           todaySchedules: schedules || [],
           recentCustomers: recentCustomers || [],
           date: today,
-        },
+        }),
       })
 
-      if (error) throw new Error(`Function error: ${error.message || JSON.stringify(error)}`)
+      const text = await res.text()
+      if (!res.ok) {
+        setAiSummary(`[디버그 ${res.status}] ${text}`)
+        setAiLoading(false)
+        return
+      }
+
+      const data = JSON.parse(text)
       setAiSummary(data?.summary || '오늘의 업무 요약을 불러올 수 없습니다.')
     } catch (err: any) {
       setAiSummary(`[디버그] ${err.message || '알 수 없는 오류'}`)
