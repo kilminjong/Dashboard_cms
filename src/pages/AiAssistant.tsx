@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../hooks/useAuth'
 import { Send, Bot, User, Trash2, Sparkles } from 'lucide-react'
+import ReactMarkdown from 'react-markdown'
 
 interface Message {
   role: 'user' | 'assistant'
@@ -57,7 +58,6 @@ export default function AiAssistant() {
       const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY
       const { data: { session } } = await supabase.auth.getSession()
 
-      // 고객 데이터 조회 (AI가 참고할 수 있도록)
       const { data: customers } = await supabase
         .from('customers')
         .select('customer_name, opening_status, manager, reception_date, connection_status, erp_company, business_number')
@@ -71,7 +71,6 @@ export default function AiAssistant() {
         .order('start_date')
         .limit(20)
 
-      // 최근 대화 내역 (컨텍스트용, 최근 10개)
       const chatHistory = newMessages.slice(-10).map((m) => ({
         role: m.role,
         content: m.content,
@@ -167,11 +166,10 @@ export default function AiAssistant() {
               </div>
               <h3 className="text-lg font-semibold text-gray-700 mb-2">무엇을 도와드릴까요?</h3>
               <p className="text-sm text-gray-400 mb-6 max-w-sm">
-                고객 데이터 조회, 현황 분석, 이메일/제안서 초안 작성 등<br />
-                CMS 업무에 관한 모든 것을 물어보세요.
+                고객 데이터 조회, 현황 분석, 이메일/제안서 초안 작성,<br />
+                SQL 쿼리 정리 등 업무에 관한 모든 것을 물어보세요.
               </p>
 
-              {/* 빠른 질문 */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 w-full max-w-lg">
                 {QUICK_PROMPTS.map((prompt) => (
                   <button
@@ -193,12 +191,64 @@ export default function AiAssistant() {
                       <Bot size={16} className="text-emerald-600" />
                     </div>
                   )}
-                  <div className={`max-w-[80%] sm:max-w-[70%] ${
+                  <div className={`max-w-[85%] sm:max-w-[75%] ${
                     msg.role === 'user'
                       ? 'bg-emerald-600 text-white rounded-2xl rounded-tr-md'
                       : 'bg-gray-50 text-gray-800 rounded-2xl rounded-tl-md border border-gray-100'
                   } px-4 py-3`}>
-                    <p className="text-sm whitespace-pre-wrap leading-relaxed">{msg.content}</p>
+                    {msg.role === 'assistant' ? (
+                      <div className="markdown-body text-sm leading-relaxed">
+                        <ReactMarkdown
+                          components={{
+                            h1: ({ children }) => <h1 className="text-lg font-bold text-gray-800 mt-3 mb-2 first:mt-0">{children}</h1>,
+                            h2: ({ children }) => <h2 className="text-base font-bold text-gray-800 mt-3 mb-1.5 first:mt-0">{children}</h2>,
+                            h3: ({ children }) => <h3 className="text-sm font-bold text-gray-700 mt-2 mb-1 first:mt-0">{children}</h3>,
+                            p: ({ children }) => <p className="mb-2 last:mb-0 text-gray-700">{children}</p>,
+                            ul: ({ children }) => <ul className="mb-2 ml-4 space-y-0.5 list-disc text-gray-700">{children}</ul>,
+                            ol: ({ children }) => <ol className="mb-2 ml-4 space-y-0.5 list-decimal text-gray-700">{children}</ol>,
+                            li: ({ children }) => <li className="text-sm">{children}</li>,
+                            strong: ({ children }) => <strong className="font-semibold text-gray-800">{children}</strong>,
+                            em: ({ children }) => <em className="text-gray-600 italic">{children}</em>,
+                            code: ({ children, className }) => {
+                              const isBlock = className?.includes('language-')
+                              if (isBlock) {
+                                return (
+                                  <code className="block bg-gray-800 text-emerald-300 rounded-lg p-3 my-2 text-xs font-mono overflow-x-auto whitespace-pre">
+                                    {children}
+                                  </code>
+                                )
+                              }
+                              return <code className="bg-emerald-50 text-emerald-700 px-1.5 py-0.5 rounded text-xs font-mono">{children}</code>
+                            },
+                            pre: ({ children }) => <div className="my-2">{children}</div>,
+                            table: ({ children }) => (
+                              <div className="overflow-x-auto my-2 rounded-lg border border-gray-200">
+                                <table className="w-full text-sm">{children}</table>
+                              </div>
+                            ),
+                            thead: ({ children }) => <thead className="bg-emerald-50">{children}</thead>,
+                            th: ({ children }) => <th className="px-3 py-2 text-left text-xs font-semibold text-emerald-700 border-b border-gray-200">{children}</th>,
+                            td: ({ children }) => <td className="px-3 py-2 text-xs text-gray-700 border-b border-gray-50">{children}</td>,
+                            tr: ({ children }) => <tr className="hover:bg-gray-50">{children}</tr>,
+                            hr: () => <hr className="my-3 border-gray-200" />,
+                            blockquote: ({ children }) => (
+                              <blockquote className="border-l-3 border-emerald-400 bg-emerald-50/50 pl-3 py-1 my-2 text-sm text-gray-600 rounded-r-lg">
+                                {children}
+                              </blockquote>
+                            ),
+                            a: ({ href, children }) => (
+                              <a href={href} target="_blank" rel="noopener noreferrer" className="text-emerald-600 underline hover:text-emerald-700">
+                                {children}
+                              </a>
+                            ),
+                          }}
+                        >
+                          {msg.content}
+                        </ReactMarkdown>
+                      </div>
+                    ) : (
+                      <p className="text-sm whitespace-pre-wrap leading-relaxed">{msg.content}</p>
+                    )}
                     <p className={`text-[10px] mt-1.5 ${msg.role === 'user' ? 'text-emerald-200' : 'text-gray-300'}`}>
                       {msg.timestamp.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })}
                     </p>
