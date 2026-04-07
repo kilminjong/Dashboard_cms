@@ -112,10 +112,10 @@ export default function Dashboard() {
         },
       })
 
-      if (error) throw error
+      if (error) throw new Error(`Function error: ${error.message || JSON.stringify(error)}`)
       setAiSummary(data?.summary || '오늘의 업무 요약을 불러올 수 없습니다.')
-    } catch {
-      setAiSummary('AI 요약을 불러올 수 없습니다. Edge Function 설정을 확인해주세요.')
+    } catch (err: any) {
+      setAiSummary(`[디버그] ${err.message || '알 수 없는 오류'}`)
     }
     setAiLoading(false)
   }
