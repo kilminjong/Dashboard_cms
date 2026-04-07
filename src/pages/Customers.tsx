@@ -1,4 +1,5 @@
 import { useEffect, useState, useRef } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import type { Customer } from '../types'
 import { Plus, Search, Edit2, Trash2, X, Upload, Download } from 'lucide-react'
@@ -45,6 +46,7 @@ const emptyForm = () => {
 }
 
 export default function Customers() {
+  const navigate = useNavigate()
   const [customers, setCustomers] = useState<Customer[]>([])
   const [search, setSearch] = useState('')
   const [showModal, setShowModal] = useState(false)
@@ -231,7 +233,16 @@ export default function Customers() {
                   <tr key={c.id} className="hover:bg-gray-50">
                     {TABLE_COLUMNS.map((col) => (
                       <td key={col} className="px-5 py-3 text-sm text-gray-700 whitespace-nowrap">
-                        {(c as any)[col] || '-'}
+                        {col === 'customer_name' ? (
+                          <button
+                            onClick={() => navigate(`/customers/${c.id}`)}
+                            className="text-emerald-600 font-medium hover:underline"
+                          >
+                            {(c as any)[col] || '-'}
+                          </button>
+                        ) : (
+                          (c as any)[col] || '-'
+                        )}
                       </td>
                     ))}
                     <td className="px-5 py-3 text-right whitespace-nowrap">
@@ -260,7 +271,7 @@ export default function Customers() {
           filtered.map((c) => (
             <div key={c.id} className="bg-white rounded-xl p-4 shadow-sm border border-gray-100">
               <div className="flex items-center justify-between mb-2">
-                <span className="font-medium text-gray-800">{c.customer_name}</span>
+                <button onClick={() => navigate(`/customers/${c.id}`)} className="font-medium text-emerald-600 hover:underline">{c.customer_name}</button>
                 <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
                   c.opening_status === '개설완료' ? 'bg-emerald-100 text-emerald-800' : 'bg-orange-100 text-orange-800'
                 }`}>

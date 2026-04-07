@@ -5,6 +5,7 @@ import Login from './pages/Login'
 import Signup from './pages/Signup'
 import Dashboard from './pages/Dashboard'
 import Customers from './pages/Customers'
+import CustomerDetail from './pages/CustomerDetail'
 import CalendarPage from './pages/Calendar'
 import ProfilePage from './pages/Profile'
 
@@ -41,6 +42,7 @@ export default function App() {
         >
           <Route path="/" element={<Dashboard />} />
           <Route path="/customers" element={<Customers />} />
+          <Route path="/customers/:id" element={<CustomerDetail />} />
           <Route path="/calendar" element={<CalendarPage />} />
           <Route path="/profile" element={<ProfilePage />} />
         </Route>

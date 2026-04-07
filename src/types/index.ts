@@ -61,3 +61,21 @@ export interface ImportLog {
   fail_count: number
   created_at: string
 }
+
+export interface CustomerMemo {
+  id: string
+  customer_id: string
+  content: string
+  created_by: string
+  created_at: string
+}
+
+export interface CustomerHistory {
+  id: string
+  customer_id: string
+  field_name: string
+  old_value: string | null
+  new_value: string | null
+  changed_by: string
+  changed_at: string
+}
