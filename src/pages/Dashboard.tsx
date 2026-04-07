@@ -212,7 +212,7 @@ export default function Dashboard() {
                       <Cell key={`cell-${index}`} fill={PIE_COLORS[index]} />
                     ))}
                   </Pie>
-                  <Tooltip formatter={(value: number) => `${value.toLocaleString()}건`} />
+                  <Tooltip formatter={(value) => `${Number(value).toLocaleString()}건`} />
                 </PieChart>
               </ResponsiveContainer>
             </div>
@@ -243,7 +243,7 @@ export default function Dashboard() {
               <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
               <XAxis dataKey="month" tick={{ fontSize: 12 }} stroke="#9ca3af" />
               <YAxis tick={{ fontSize: 12 }} stroke="#9ca3af" />
-              <Tooltip formatter={(value: number) => `${value.toLocaleString()}건`} />
+              <Tooltip formatter={(value) => `${Number(value).toLocaleString()}건`} />
               <Line
                 type="monotone"
                 dataKey="count"
