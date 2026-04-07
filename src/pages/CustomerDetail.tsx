@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import type { Customer, CustomerMemo, CustomerHistory } from '../types'
-import { ArrowLeft, Save, Plus, Sparkles, RefreshCw, Clock, Building2, Server, UserCircle, FileText, MessageSquare } from 'lucide-react'
+import { ArrowLeft, Save, Plus, Sparkles, RefreshCw, Clock, Building2, Server, UserCircle, FileText, MessageSquare, Trash2 } from 'lucide-react'
 
 const TABS = [
   { key: '기본정보', icon: Building2 },
@@ -426,9 +426,22 @@ export default function CustomerDetail() {
                 {memos.map((memo) => (
                   <div key={memo.id} className="px-5 py-4">
                     <p className="text-sm text-gray-800 whitespace-pre-wrap leading-relaxed">{memo.content}</p>
-                    <p className="text-xs text-gray-400 mt-2">
-                      {new Date(memo.created_at).toLocaleString('ko-KR')}
-                    </p>
+                    <div className="flex items-center justify-between mt-2">
+                      <p className="text-xs text-gray-400">
+                        {new Date(memo.created_at).toLocaleString('ko-KR')}
+                      </p>
+                      <button
+                        onClick={async () => {
+                          if (!confirm('이 메모를 삭제하시겠습니까?')) return
+                          await supabase.from('customer_memos').delete().eq('id', memo.id)
+                          loadMemos()
+                        }}
+                        className="p-1 text-gray-300 hover:text-red-500 transition"
+                        title="메모 삭제"
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
                   </div>
                 ))}
               </div>
