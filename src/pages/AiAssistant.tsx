@@ -59,9 +59,9 @@ export default function AiAssistant() {
       const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY
       const { data: { session } } = await supabase.auth.getSession()
 
-      const { data: customers } = await supabase
+      const { data: allCustomers } = await supabase
         .from('customers')
-        .select('customer_name, opening_status, manager, reception_date, connection_status, erp_company, business_number')
+        .select('customer_name, opening_status, manager, reception_date, connection_status, erp_company, business_number, customer_number, erp_type, connection_method, opening_date, connection_date')
         .range(0, 9999)
 
       const today = new Date().toISOString().split('T')[0]
@@ -71,6 +71,42 @@ export default function AiAssistant() {
         .gte('start_date', today)
         .order('start_date')
         .limit(20)
+
+      // 사용자 질문에서 키워드 추출 후 관련 고객 필터링
+      const userMsg = msg.toLowerCase()
+      const customers = allCustomers || []
+
+      let filteredCustomers = customers
+      if (userMsg.includes('개설 안') || userMsg.includes('미개설') || userMsg.includes('개설되지') || userMsg.includes('개설대기')) {
+        filteredCustomers = customers.filter((c) => c.opening_status !== '개설완료' && c.opening_status !== '이행완료')
+      } else if (userMsg.includes('개설완료') || userMsg.includes('개설 완료')) {
+        filteredCustomers = customers.filter((c) => c.opening_status === '개설완료' || c.opening_status === '이행완료')
+      } else if (userMsg.includes('개설취소') || userMsg.includes('취소')) {
+        filteredCustomers = customers.filter((c) => c.opening_status === '개설취소')
+      } else if (userMsg.includes('개설진행') || userMsg.includes('진행')) {
+        filteredCustomers = customers.filter((c) => c.opening_status === '개설진행')
+      }
+
+      // 담당자 필터
+      const managerMatch = userMsg.match(/담당자\s*(\S+?)(?:\s|$|의|가|를)/)
+      if (managerMatch) {
+        const keyword = managerMatch[1]
+        filteredCustomers = filteredCustomers.filter((c) => c.manager?.includes(keyword))
+      }
+      if (userMsg.includes('내 담당') || userMsg.includes('나의 담당') || userMsg.includes('내가 담당')) {
+        filteredCustomers = customers.filter((c) => c.manager === (profile?.name || ''))
+      }
+
+      // 통계 요약 생성
+      const stats = {
+        total: customers.length,
+        opened: customers.filter((c) => c.opening_status === '개설완료' || c.opening_status === '이행완료').length,
+        waiting: customers.filter((c) => c.opening_status === '개설대기').length,
+        progress: customers.filter((c) => c.opening_status === '개설진행').length,
+        canceled: customers.filter((c) => c.opening_status === '개설취소').length,
+        thisMonthNew: customers.filter((c) => c.reception_date?.startsWith(today.substring(0, 7))).length,
+        myCustomers: customers.filter((c) => c.manager === (profile?.name || '')).length,
+      }
 
       const chatHistory = newMessages.slice(-10).map((m) => ({
         role: m.role,
@@ -86,7 +122,9 @@ export default function AiAssistant() {
         },
         body: JSON.stringify({
           messages: chatHistory,
-          customerData: customers || [],
+          filteredCustomers: filteredCustomers.slice(0, 100),
+          filteredCount: filteredCustomers.length,
+          stats,
           scheduleData: schedules || [],
           managerName: profile?.name || '',
           date: today,
