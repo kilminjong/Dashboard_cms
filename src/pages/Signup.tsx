@@ -3,12 +3,6 @@ import { useNavigate, Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { ShieldCheck } from 'lucide-react'
 
-// 가입코드 설정 (추후 환경변수나 DB로 관리 가능)
-const SIGNUP_CODES: Record<string, string> = {
-  '5555444466': 'admin',    // 관리자
-  '11112222': 'user',       // 일반사용자
-}
-
 export default function Signup() {
   const navigate = useNavigate()
   const [form, setForm] = useState({
@@ -25,14 +19,22 @@ export default function Signup() {
     e.preventDefault()
     setError('')
 
-    // 가입코드 검증
-    const role = SIGNUP_CODES[form.signupCode.trim()]
-    if (!role) {
+    // 가입코드 검증 (DB에서 조회)
+    setLoading(true)
+    const { data: codeData } = await supabase
+      .from('signup_codes')
+      .select('role')
+      .eq('code', form.signupCode.trim())
+      .eq('is_active', true)
+      .single()
+
+    if (!codeData) {
       setError('유효하지 않은 가입코드입니다. 관리자에게 문의하세요.')
+      setLoading(false)
       return
     }
 
-    setLoading(true)
+    const role = codeData.role
 
     const { error } = await supabase.auth.signUp({
       email: form.email,
@@ -61,9 +63,15 @@ export default function Signup() {
   }
 
   const handleGoogleSignup = async () => {
-    // Google 가입도 가입코드 검증
-    const role = SIGNUP_CODES[form.signupCode.trim()]
-    if (!role) {
+    // Google 가입도 가입코드 검증 (DB에서 조회)
+    const { data: codeData } = await supabase
+      .from('signup_codes')
+      .select('role')
+      .eq('code', form.signupCode.trim())
+      .eq('is_active', true)
+      .single()
+
+    if (!codeData) {
       setError('Google 가입도 가입코드가 필요합니다. 가입코드를 먼저 입력해주세요.')
       return
     }
