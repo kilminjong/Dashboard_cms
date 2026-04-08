@@ -48,19 +48,29 @@ export default function Dashboard() {
   const [recentCustomers, setRecentCustomers] = useState<any[]>([])
   const [monthlyData, setMonthlyData] = useState<MonthlyData[]>([])
   const [statusData, setStatusData] = useState<StatusData[]>([])
-  const [aiSummary, setAiSummary] = useState(() => {
-    return sessionStorage.getItem('ai_summary') || ''
-  })
+  const [aiSummary, setAiSummary] = useState('')
   const [aiLoading, setAiLoading] = useState(false)
+
+  // 유저별 캐시 키
+  const cacheKey = profile?.id ? `ai_summary_${profile.id}` : 'ai_summary'
+  const cacheDateKey = profile?.id ? `ai_summary_date_${profile.id}` : 'ai_summary_date'
 
   useEffect(() => {
     loadStats()
     loadRecentCustomers()
     loadMonthlyTrend()
-    if (!sessionStorage.getItem('ai_summary')) {
+
+    // 유저별 + 날짜별 캐시 확인
+    const cached = sessionStorage.getItem(cacheKey)
+    const cachedDate = sessionStorage.getItem(cacheDateKey)
+    const today = new Date().toISOString().split('T')[0]
+
+    if (cached && cachedDate === today) {
+      setAiSummary(cached)
+    } else {
       loadAiSummary()
     }
-  }, [])
+  }, [profile?.id])
 
   const categorizeStatus = (status: string) => {
     if (!status) return '개설대기'
@@ -143,11 +153,12 @@ export default function Dashboard() {
       const today = new Date().toISOString().split('T')[0]
       const userName = profile?.name || ''
 
-      // 오늘 캘린더 일정
+      // 오늘 캘린더 일정 (시간 + 완료 상태 포함)
       const { data: schedules } = await supabase
         .from('schedules')
-        .select('title, description')
+        .select('title, description, start_time, end_time, is_done')
         .eq('start_date', today)
+        .order('start_time')
 
       // 로그인한 담당자의 고객 현황 (manager가 본인 이름인 것)
       let myCustomersQuery = supabase
@@ -191,7 +202,8 @@ export default function Dashboard() {
       const data = JSON.parse(text)
       const summary = data?.summary || '오늘의 업무 요약을 불러올 수 없습니다.'
       setAiSummary(summary)
-      sessionStorage.setItem('ai_summary', summary)
+      sessionStorage.setItem(cacheKey, summary)
+      sessionStorage.setItem(cacheDateKey, new Date().toISOString().split('T')[0])
     } catch (err: any) {
       console.error('[AI 요약 에러]', err)
       setAiSummary('오류가 발생했습니다. 관리자에게 문의해주세요.')
@@ -245,7 +257,7 @@ export default function Dashboard() {
             </div>
           </div>
           <button
-            onClick={() => { sessionStorage.removeItem('ai_summary'); loadAiSummary() }}
+            onClick={() => { sessionStorage.removeItem(cacheKey); sessionStorage.removeItem(cacheDateKey); loadAiSummary() }}
             disabled={aiLoading}
             className="p-1.5 text-emerald-500 hover:text-emerald-700 hover:bg-emerald-100 rounded-lg transition"
             title="다시 분석"
