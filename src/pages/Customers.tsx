@@ -4,33 +4,33 @@ import { supabase } from '../lib/supabase'
 import type { Customer } from '../types'
 import { Plus, Search, Edit2, Trash2, X, Upload, Download, Filter, ChevronUp, ChevronDown, RotateCcw } from 'lucide-react'
 
-const CUSTOMER_FIELDS = [
+const CUSTOMER_FIELDS: { key: string; label: string; required?: boolean; type?: string; options?: string[] }[] = [
   { key: 'customer_name', label: '고객명', required: true },
-  { key: 'business_number', label: '사업자번호' },
-  { key: 'customer_number', label: '고객번호' },
+  { key: 'business_number', label: '사업자번호', required: true },
+  { key: 'customer_number', label: '고객번호', required: true },
   { key: 'management_code', label: '관리코드' },
   { key: 'build_type', label: '구축구분' },
   { key: 'management_type', label: '관리구분' },
   { key: 'construction_type', label: '구축형' },
-  { key: 'manager', label: '담당자' },
-  { key: 'reception_date', label: '신규접수일', type: 'date' },
+  { key: 'manager', label: '담당자', required: true },
+  { key: 'reception_date', label: '신규접수일', type: 'date', required: true },
   { key: 'customer_contact_person', label: '고객담당자' },
-  { key: 'customer_department', label: '담당 부서' },
+  { key: 'customer_department', label: '담당 부서', type: 'select-other', options: ['인사팀', '재무팀', '전산팀'] },
   { key: 'contact_phone', label: '담당자 연락처' },
   { key: 'contact_email', label: '담당자 이메일', type: 'email' },
-  { key: 'opening_status', label: '개설상태' },
+  { key: 'opening_status', label: '개설상태', type: 'select', options: ['개설대기', '개설진행', '개설취소', '개설완료', '이행완료'] },
   { key: 'opening_date', label: '개설/이행일', type: 'date' },
-  { key: 'connection_status', label: '연계상태' },
+  { key: 'connection_status', label: '연계상태', type: 'select', options: ['ERP연계대기', 'ERP연계진행', 'ERP연계완료', 'ERP청구완료', '연계청구보류'] },
   { key: 'connection_date', label: '연계일자', type: 'date' },
   { key: 'erp_company', label: 'ERP회사' },
-  { key: 'erp_type', label: 'ERP 종류' },
+  { key: 'erp_type', label: 'ERP 종류', type: 'select', options: ['영림원', 'Amaranth10', 'ERP10', '옴니이솔', 'IU', 'ICUBE', 'SAP', '오직', '디모데'] },
   { key: 'erp_db', label: 'ERP DB' },
-  { key: 'connection_method', label: '연계방식' },
-  { key: 'server_location', label: '서버PC 상세위치' },
-  { key: 'schedule_use', label: '스케줄사용여부' },
+  { key: 'connection_method', label: '연계방식', type: 'select', options: ['DB to DB', 'API', '3 Tire', 'RFC'] },
+  { key: 'server_location', label: '서버PC 상세위치', type: 'select-other', options: ['내부', '전산실'] },
+  { key: 'schedule_use', label: '스케줄사용여부', type: 'select', options: ['Y', 'N'] },
   { key: 'customer_ip', label: '고객사 IP' },
-  { key: 'sensitive_customer', label: '민감고객' },
-  { key: 'intimacy', label: '친밀도' },
+  { key: 'sensitive_customer', label: '민감고객', type: 'select', options: ['Y', 'N'] },
+  { key: 'intimacy', label: '친밀도', type: 'select', options: ['상', '중', '하'] },
   { key: 'duplicate_check', label: '중복체크' },
 ]
 
@@ -173,20 +173,31 @@ export default function Customers() {
   }
 
   const handleSave = async () => {
-    if (!form.customer_name?.trim()) {
-      alert('고객명은 필수입니다.')
+    // 필수 입력 검증
+    const requiredFields = CUSTOMER_FIELDS.filter((f) => f.required)
+    const missing = requiredFields.filter((f) => !form[f.key]?.trim())
+    if (missing.length > 0) {
+      alert(`필수 입력정보를 확인해주세요.\n\n미입력 항목: ${missing.map((f) => f.label).join(', ')}`)
       return
     }
+
+    // 빈 날짜 필드를 null로 변환 (DB date 타입 에러 방지)
+    const cleanForm = { ...form }
+    CUSTOMER_FIELDS.forEach((field) => {
+      if (field.type === 'date' && !cleanForm[field.key]?.trim()) {
+        cleanForm[field.key] = null
+      }
+    })
 
     if (editingCustomer) {
       const { error } = await supabase
         .from('customers')
-        .update({ ...form, updated_at: new Date().toISOString() })
+        .update({ ...cleanForm, updated_at: new Date().toISOString() })
         .eq('id', editingCustomer.id)
       if (error) { alert('수정 실패: ' + error.message); return }
     } else {
       const { data: { user } } = await supabase.auth.getUser()
-      const { error } = await supabase.from('customers').insert([{ ...form, created_by: user?.id }])
+      const { error } = await supabase.from('customers').insert([{ ...cleanForm, created_by: user?.id }])
       if (error) { alert('등록 실패: ' + error.message); return }
     }
     setShowModal(false)
@@ -516,17 +527,55 @@ export default function Customers() {
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               {CUSTOMER_FIELDS.map((field) => (
-                <div key={field.key}>
+                <div key={field.key} className={field.required ? 'bg-blue-50/50 rounded-lg p-2.5 -m-0.5' : ''}>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
                     {field.label} {field.required && <span className="text-red-500">*</span>}
                   </label>
-                  <input
-                    type={field.type || 'text'}
-                    value={form[field.key]}
-                    onChange={(e) => setForm({ ...form, [field.key]: e.target.value })}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent outline-none text-sm"
-                    required={field.required}
-                  />
+                  {field.type === 'select' && field.options ? (
+                    <select
+                      value={form[field.key]}
+                      onChange={(e) => setForm({ ...form, [field.key]: e.target.value })}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent outline-none text-sm bg-white"
+                    >
+                      <option value="">선택하세요</option>
+                      {field.options.map((opt) => (
+                        <option key={opt} value={opt}>{opt}</option>
+                      ))}
+                    </select>
+                  ) : field.type === 'select-other' && field.options ? (
+                    <div className="flex gap-2">
+                      <select
+                        value={field.options.includes(form[field.key]) ? form[field.key] : form[field.key] ? '기타' : ''}
+                        onChange={(e) => {
+                          if (e.target.value === '기타') setForm({ ...form, [field.key]: '' })
+                          else setForm({ ...form, [field.key]: e.target.value })
+                        }}
+                        className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent outline-none text-sm bg-white"
+                      >
+                        <option value="">선택하세요</option>
+                        {field.options.map((opt) => (
+                          <option key={opt} value={opt}>{opt}</option>
+                        ))}
+                        <option value="기타">기타(직접입력)</option>
+                      </select>
+                      {form[field.key] && !field.options.includes(form[field.key]) && (
+                        <input
+                          type="text"
+                          value={form[field.key]}
+                          onChange={(e) => setForm({ ...form, [field.key]: e.target.value })}
+                          className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent outline-none text-sm"
+                          placeholder="직접 입력"
+                        />
+                      )}
+                    </div>
+                  ) : (
+                    <input
+                      type={field.type || 'text'}
+                      value={form[field.key]}
+                      onChange={(e) => setForm({ ...form, [field.key]: e.target.value })}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent outline-none text-sm"
+                    />
+                  )}
                 </div>
               ))}
             </div>
