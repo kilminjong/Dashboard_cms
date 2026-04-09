@@ -607,9 +607,21 @@ export default function Customers() {
                 </div>
                 <p className="text-sm text-gray-500">{c.business_number || '-'}</p>
                 <p className="text-sm text-gray-500">담당: {c.manager || '-'} · ERP: {c.erp_company || '-'}</p>
-                <div className="flex justify-end gap-3 mt-3 pt-3 border-t border-gray-100">
-                  <button onClick={() => openEdit(c)} className="text-sm text-emerald-600 font-medium">수정</button>
-                  <button onClick={() => handleDelete(c.id)} className="text-sm text-red-500 font-medium">삭제</button>
+                <div className="flex justify-between items-center mt-3 pt-3 border-t border-gray-100">
+                  {c.business_number ? (
+                    <a
+                      href={`https://bizno.net/?query=${encodeURIComponent(c.customer_name)}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-xs text-blue-600 border border-blue-200 bg-blue-50 px-2.5 py-1 rounded-lg"
+                    >
+                      BIZNO.NET 검색
+                    </a>
+                  ) : <div />}
+                  <div className="flex gap-3">
+                    <button onClick={() => openEdit(c)} className="text-sm text-emerald-600 font-medium">수정</button>
+                    <button onClick={() => handleDelete(c.id)} className="text-sm text-red-500 font-medium">삭제</button>
+                  </div>
                 </div>
               </div>
             ))}
