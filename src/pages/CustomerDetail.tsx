@@ -397,7 +397,15 @@ export default function CustomerDetail() {
                       <input
                         type={field.type || 'text'}
                         value={form[field.key] || ''}
-                        onChange={(e) => setForm({ ...form, [field.key]: e.target.value })}
+                        onChange={(e) => {
+                          let val = e.target.value
+                          if (field.key === 'business_number' || field.key === 'customer_number') {
+                            val = val.replace(/[^0-9]/g, '')
+                          }
+                          setForm({ ...form, [field.key]: val })
+                        }}
+                        maxLength={field.key === 'business_number' ? 10 : field.key === 'customer_number' ? 9 : undefined}
+                        inputMode={field.key === 'business_number' || field.key === 'customer_number' ? 'numeric' : undefined}
                         className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent outline-none text-sm"
                       />
                     )

@@ -228,41 +228,96 @@ export default function Customers() {
     loadCustomers()
   }
 
-  // CSV 일괄등록
+  // Excel/CSV 일괄등록
   const handleBulkImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
 
-    const text = await file.text()
-    // 쉼표가 따옴표 안에 있을 수 있으므로 간단한 CSV 파싱
-    const lines = text.split('\n').filter((l) => l.trim())
-    if (lines.length < 2) {
-      alert('데이터가 없습니다.')
+    let rows: any[] = []
+
+    try {
+      const isExcel = file.name.endsWith('.xlsx') || file.name.endsWith('.xls')
+
+      if (isExcel) {
+        // Excel 파싱
+        const buffer = await file.arrayBuffer()
+        const wb = XLSX.read(buffer, { type: 'array' })
+        const ws = wb.Sheets[wb.SheetNames[0]]
+        const jsonData = XLSX.utils.sheet_to_json<any>(ws, { header: 1, defval: '' })
+
+        if (jsonData.length < 2) { alert('데이터가 없습니다.'); return }
+
+        const headers = (jsonData[0] as string[]).map((h: any) => String(h).trim())
+        rows = jsonData.slice(1).map((values: any) => {
+          const row: any = {}
+          headers.forEach((h, i) => {
+            const field = CUSTOMER_FIELDS.find((f) => f.label === h || f.key === h)
+            if (field) {
+              let val = values[i] != null ? String(values[i]).trim() : ''
+              // 숫자 뒤 .0 제거 (사업자번호 등)
+              if (val.endsWith('.0')) val = val.replace('.0', '')
+              // 날짜 필드: Excel 숫자 변환
+              if (field.type === 'date' && val && !isNaN(Number(val))) {
+                const d = XLSX.SSF.parse_date_code(Number(val))
+                if (d) val = `${d.y}-${String(d.m).padStart(2, '0')}-${String(d.d).padStart(2, '0')}`
+              }
+              row[field.key] = val
+            }
+          })
+          return row
+        }).filter((r: any) => r.customer_name)
+      } else {
+        // CSV 파싱
+        const text = await file.text()
+        const lines = text.split('\n').filter((l) => l.trim())
+        if (lines.length < 2) { alert('데이터가 없습니다.'); return }
+
+        const headers = lines[0].split(',').map((h) => h.trim().replace(/^["']|["']$/g, ''))
+        rows = lines.slice(1).map((line) => {
+          const values = line.split(',').map((v) => v.trim().replace(/^["']|["']$/g, ''))
+          const row: any = {}
+          headers.forEach((h, i) => {
+            const field = CUSTOMER_FIELDS.find((f) => f.label === h || f.key === h)
+            if (field) {
+              let val = values[i] || ''
+              if (val.endsWith('.0')) val = val.replace('.0', '')
+              row[field.key] = val
+            }
+          })
+          return row
+        }).filter((r) => r.customer_name)
+      }
+    } catch (err) {
+      alert('파일을 읽는 중 오류가 발생했습니다. 양식을 확인해주세요.')
+      if (fileInputRef.current) fileInputRef.current.value = ''
       return
     }
-
-    const headers = lines[0].split(',').map((h) => h.trim().replace(/^["']|["']$/g, ''))
-    const rows = lines.slice(1).map((line) => {
-      const values = line.split(',').map((v) => v.trim().replace(/^["']|["']$/g, ''))
-      const row: any = {}
-      headers.forEach((h, i) => {
-        const field = CUSTOMER_FIELDS.find((f) => f.label === h || f.key === h)
-        if (field) row[field.key] = values[i] || ''
-      })
-      return row
-    }).filter((r) => r.customer_name)
 
     if (rows.length === 0) {
-      alert('유효한 데이터가 없습니다. CSV 헤더를 확인해주세요.\n헤더는 한글 라벨(고객명, 사업자번호 등) 또는 영문 키(customer_name 등) 모두 지원합니다.')
+      alert('유효한 데이터가 없습니다.\n\n"일괄등록 양식 다운로드" 버튼으로 양식을 다운받아 작성해주세요.')
+      if (fileInputRef.current) fileInputRef.current.value = ''
       return
     }
 
-    if (!confirm(`${rows.length}건을 등록하시겠습니까?`)) return
+    // 빈 날짜 null 처리 + 사업자번호/고객번호 숫자만
+    rows = rows.map((r) => {
+      const cleaned = { ...r }
+      CUSTOMER_FIELDS.forEach((f) => {
+        if (f.type === 'date' && !cleaned[f.key]?.trim()) cleaned[f.key] = null
+        if (f.key === 'business_number' && cleaned[f.key]) cleaned[f.key] = cleaned[f.key].replace(/[^0-9]/g, '')
+        if (f.key === 'customer_number' && cleaned[f.key]) cleaned[f.key] = cleaned[f.key].replace(/[^0-9]/g, '')
+      })
+      return cleaned
+    })
+
+    if (!confirm(`${rows.length}건을 등록하시겠습니까?`)) {
+      if (fileInputRef.current) fileInputRef.current.value = ''
+      return
+    }
 
     const { data: { user } } = await supabase.auth.getUser()
     const rowsWithUser = rows.map((r) => ({ ...r, created_by: user?.id }))
 
-    // 대량 데이터는 500건씩 분할 insert
     let successCount = 0
     let failCount = 0
     for (let i = 0; i < rowsWithUser.length; i += 500) {
@@ -335,7 +390,7 @@ export default function Customers() {
           </button>
           <label className="flex items-center gap-1.5 px-3 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition text-sm cursor-pointer">
             <Upload size={16} /> 일괄등록
-            <input ref={fileInputRef} type="file" accept=".csv" onChange={handleBulkImport} className="hidden" />
+            <input ref={fileInputRef} type="file" accept=".csv,.xlsx,.xls" onChange={handleBulkImport} className="hidden" />
           </label>
           <button onClick={openCreate}
             className="flex items-center gap-1.5 px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition text-sm">
@@ -610,7 +665,17 @@ export default function Customers() {
                           <input
                             type={field.type || 'text'}
                             value={form[field.key]}
-                            onChange={(e) => setForm({ ...form, [field.key]: e.target.value })}
+                            onChange={(e) => {
+                              let val = e.target.value
+                              // 사업자번호/고객번호는 숫자만 허용
+                              if (field.key === 'business_number' || field.key === 'customer_number') {
+                                val = val.replace(/[^0-9]/g, '')
+                              }
+                              setForm({ ...form, [field.key]: val })
+                            }}
+                            maxLength={field.key === 'business_number' ? 10 : field.key === 'customer_number' ? 9 : undefined}
+                            inputMode={field.key === 'business_number' || field.key === 'customer_number' ? 'numeric' : undefined}
+                            placeholder={field.key === 'business_number' ? '숫자 10자리' : field.key === 'customer_number' ? '숫자 9자리' : undefined}
                             className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent outline-none text-sm"
                           />
                         )}
