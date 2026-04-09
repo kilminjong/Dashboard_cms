@@ -318,65 +318,72 @@ export default function Dashboard() {
       </div>
 
       {/* 내 담당 고객 현황 */}
-      {profile?.name && myStats.total > 0 && (
-        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5 mb-6">
-          <div className="flex items-center gap-2 mb-4">
-            <UserCircle size={20} className="text-emerald-600" />
-            <h3 className="font-semibold text-gray-800">{profile.name} 담당 고객 현황</h3>
-            <span className="text-xs text-gray-400 ml-1">총 {myStats.total.toLocaleString()}건</span>
-          </div>
+      <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5 mb-6">
+        <div className="flex items-center gap-2 mb-4">
+          <UserCircle size={20} className="text-emerald-600" />
+          <h3 className="font-semibold text-gray-800">{profile?.name || '나'}의 담당 고객 현황</h3>
+          <span className="text-xs text-gray-400 ml-1">총 {myStats.total.toLocaleString()}건</span>
+        </div>
 
-          {/* 상태 바 */}
-          <div className="flex h-3 rounded-full overflow-hidden mb-3">
-            {myStats.opened > 0 && <div className="bg-emerald-500" style={{ width: `${(myStats.opened / myStats.total) * 100}%` }} />}
-            {myStats.waiting > 0 && <div className="bg-amber-400" style={{ width: `${(myStats.waiting / myStats.total) * 100}%` }} />}
-            {myStats.progress > 0 && <div className="bg-blue-400" style={{ width: `${(myStats.progress / myStats.total) * 100}%` }} />}
-            {myStats.canceled > 0 && <div className="bg-red-400" style={{ width: `${(myStats.canceled / myStats.total) * 100}%` }} />}
-          </div>
+        {myStats.total > 0 ? (
+          <>
+            {/* 상태 바 */}
+            <div className="flex h-3 rounded-full overflow-hidden mb-3 bg-gray-100">
+              {myStats.opened > 0 && <div className="bg-emerald-500" style={{ width: `${(myStats.opened / myStats.total) * 100}%` }} />}
+              {myStats.waiting > 0 && <div className="bg-amber-400" style={{ width: `${(myStats.waiting / myStats.total) * 100}%` }} />}
+              {myStats.progress > 0 && <div className="bg-blue-400" style={{ width: `${(myStats.progress / myStats.total) * 100}%` }} />}
+              {myStats.canceled > 0 && <div className="bg-red-400" style={{ width: `${(myStats.canceled / myStats.total) * 100}%` }} />}
+            </div>
 
-          {/* 상태별 수치 */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
-            <div className="flex items-center gap-2">
-              <div className="w-2.5 h-2.5 rounded-full bg-emerald-500"></div>
-              <span className="text-sm text-gray-600">개설완료 <strong className="text-gray-800">{myStats.opened}</strong></span>
-            </div>
-            <div className="flex items-center gap-2">
-              <div className="w-2.5 h-2.5 rounded-full bg-amber-400"></div>
-              <span className="text-sm text-gray-600">개설대기 <strong className="text-gray-800">{myStats.waiting}</strong></span>
-            </div>
-            <div className="flex items-center gap-2">
-              <div className="w-2.5 h-2.5 rounded-full bg-blue-400"></div>
-              <span className="text-sm text-gray-600">개설진행 <strong className="text-gray-800">{myStats.progress}</strong></span>
-            </div>
-            <div className="flex items-center gap-2">
-              <div className="w-2.5 h-2.5 rounded-full bg-red-400"></div>
-              <span className="text-sm text-gray-600">개설취소 <strong className="text-gray-800">{myStats.canceled}</strong></span>
-            </div>
-          </div>
-
-          {/* 내 최근 고객 */}
-          {myRecentCustomers.length > 0 && (
-            <div className="border-t border-gray-100 pt-3">
-              <p className="text-xs text-gray-400 mb-2">최근 등록된 내 담당 고객</p>
-              <div className="space-y-1.5">
-                {myRecentCustomers.map((c) => (
-                  <div key={c.id} className="flex items-center justify-between">
-                    <button
-                      onClick={() => navigate(`/customers/${c.id}`)}
-                      className="text-sm text-emerald-600 font-medium hover:underline truncate"
-                    >
-                      {c.customer_name}
-                    </button>
-                    <span className={`px-2 py-0.5 rounded-full text-xs font-medium shrink-0 ml-2 ${statusBadgeColor(c.opening_status)}`}>
-                      {c.opening_status || '미정'}
-                    </span>
-                  </div>
-                ))}
+            {/* 상태별 수치 */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
+              <div className="flex items-center gap-2">
+                <div className="w-2.5 h-2.5 rounded-full bg-emerald-500"></div>
+                <span className="text-sm text-gray-600">개설완료 <strong className="text-gray-800">{myStats.opened}</strong></span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="w-2.5 h-2.5 rounded-full bg-amber-400"></div>
+                <span className="text-sm text-gray-600">개설대기 <strong className="text-gray-800">{myStats.waiting}</strong></span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="w-2.5 h-2.5 rounded-full bg-blue-400"></div>
+                <span className="text-sm text-gray-600">개설진행 <strong className="text-gray-800">{myStats.progress}</strong></span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="w-2.5 h-2.5 rounded-full bg-red-400"></div>
+                <span className="text-sm text-gray-600">개설취소 <strong className="text-gray-800">{myStats.canceled}</strong></span>
               </div>
             </div>
-          )}
-        </div>
-      )}
+
+            {/* 내 최근 고객 */}
+            {myRecentCustomers.length > 0 && (
+              <div className="border-t border-gray-100 pt-3">
+                <p className="text-xs text-gray-400 mb-2">최근 등록된 내 담당 고객</p>
+                <div className="space-y-1.5">
+                  {myRecentCustomers.map((c) => (
+                    <div key={c.id} className="flex items-center justify-between">
+                      <button
+                        onClick={() => navigate(`/customers/${c.id}`)}
+                        className="text-sm text-emerald-600 font-medium hover:underline truncate"
+                      >
+                        {c.customer_name}
+                      </button>
+                      <span className={`px-2 py-0.5 rounded-full text-xs font-medium shrink-0 ml-2 ${statusBadgeColor(c.opening_status)}`}>
+                        {c.opening_status || '미정'}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </>
+        ) : (
+          <div className="text-center py-6">
+            <p className="text-sm text-gray-400">담당 고객이 없습니다.</p>
+            <p className="text-xs text-gray-300 mt-1">고객정보관리에서 담당자로 지정되면 여기에 표시됩니다.</p>
+          </div>
+        )}
+      </div>
 
       {/* 차트 영역 */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
