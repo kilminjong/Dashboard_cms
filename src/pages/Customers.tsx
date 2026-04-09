@@ -58,6 +58,12 @@ export default function Customers() {
   const [loading, setLoading] = useState(true)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
+  // 일괄등록 미리보기
+  const [importPreview, setImportPreview] = useState<any[]>([])
+  const [importFileName, setImportFileName] = useState('')
+  const [showImportModal, setShowImportModal] = useState(false)
+  const [importing, setImporting] = useState(false)
+
   // 필터
   const [showFilters, setShowFilters] = useState(false)
   const [filterStatus, setFilterStatus] = useState('')
@@ -228,7 +234,7 @@ export default function Customers() {
     loadCustomers()
   }
 
-  // Excel/CSV 일괄등록
+  // Excel/CSV 파일 읽기 → 미리보기 모달
   const handleBulkImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
@@ -239,14 +245,14 @@ export default function Customers() {
       const isExcel = file.name.endsWith('.xlsx') || file.name.endsWith('.xls')
 
       if (isExcel) {
-        // Excel 파싱
         const buffer = await file.arrayBuffer()
         const wb = XLSX.read(buffer, { type: 'array' })
         const ws = wb.Sheets[wb.SheetNames[0]]
         const jsonData = XLSX.utils.sheet_to_json<any>(ws, { header: 1, defval: '' })
 
-        if (jsonData.length < 2) { alert('데이터가 없습니다.'); return }
+        if (jsonData.length < 2) { alert('데이터가 없습니다. (1행은 헤더, 2행부터 데이터)'); return }
 
+        // 1행 = 헤더, 2행부터 = 데이터
         const headers = (jsonData[0] as string[]).map((h: any) => String(h).trim())
         rows = jsonData.slice(1).map((values: any) => {
           const row: any = {}
@@ -254,9 +260,7 @@ export default function Customers() {
             const field = CUSTOMER_FIELDS.find((f) => f.label === h || f.key === h)
             if (field) {
               let val = values[i] != null ? String(values[i]).trim() : ''
-              // 숫자 뒤 .0 제거 (사업자번호 등)
               if (val.endsWith('.0')) val = val.replace('.0', '')
-              // 날짜 필드: Excel 숫자 변환
               if (field.type === 'date' && val && !isNaN(Number(val))) {
                 const d = XLSX.SSF.parse_date_code(Number(val))
                 if (d) val = `${d.y}-${String(d.m).padStart(2, '0')}-${String(d.d).padStart(2, '0')}`
@@ -267,11 +271,11 @@ export default function Customers() {
           return row
         }).filter((r: any) => r.customer_name)
       } else {
-        // CSV 파싱
         const text = await file.text()
         const lines = text.split('\n').filter((l) => l.trim())
-        if (lines.length < 2) { alert('데이터가 없습니다.'); return }
+        if (lines.length < 2) { alert('데이터가 없습니다. (1행은 헤더, 2행부터 데이터)'); return }
 
+        // 1행 = 헤더, 2행부터 = 데이터
         const headers = lines[0].split(',').map((h) => h.trim().replace(/^["']|["']$/g, ''))
         rows = lines.slice(1).map((line) => {
           const values = line.split(',').map((v) => v.trim().replace(/^["']|["']$/g, ''))
@@ -287,7 +291,7 @@ export default function Customers() {
           return row
         }).filter((r) => r.customer_name)
       }
-    } catch (err) {
+    } catch {
       alert('파일을 읽는 중 오류가 발생했습니다. 양식을 확인해주세요.')
       if (fileInputRef.current) fileInputRef.current.value = ''
       return
@@ -299,7 +303,7 @@ export default function Customers() {
       return
     }
 
-    // 빈 날짜 null 처리 + 사업자번호/고객번호 숫자만
+    // 정제
     rows = rows.map((r) => {
       const cleaned = { ...r }
       CUSTOMER_FIELDS.forEach((f) => {
@@ -310,13 +314,19 @@ export default function Customers() {
       return cleaned
     })
 
-    if (!confirm(`${rows.length}건을 등록하시겠습니까?`)) {
-      if (fileInputRef.current) fileInputRef.current.value = ''
-      return
-    }
+    // 미리보기 모달 열기
+    setImportPreview(rows)
+    setImportFileName(file.name)
+    setShowImportModal(true)
+    if (fileInputRef.current) fileInputRef.current.value = ''
+  }
+
+  // 미리보기 확인 후 실제 업로드
+  const handleConfirmImport = async () => {
+    setImporting(true)
 
     const { data: { user } } = await supabase.auth.getUser()
-    const rowsWithUser = rows.map((r) => ({ ...r, created_by: user?.id }))
+    const rowsWithUser = importPreview.map((r) => ({ ...r, created_by: user?.id }))
 
     let successCount = 0
     let failCount = 0
@@ -332,11 +342,15 @@ export default function Customers() {
 
     await supabase.from('import_logs').insert([{
       user_id: user?.id,
-      file_name: file.name,
-      total_count: rows.length,
+      file_name: importFileName,
+      total_count: importPreview.length,
       success_count: successCount,
       fail_count: failCount,
     }])
+
+    setImporting(false)
+    setShowImportModal(false)
+    setImportPreview([])
 
     if (failCount > 0) {
       alert(`등록 완료: 성공 ${successCount}건, 실패 ${failCount}건`)
@@ -344,8 +358,6 @@ export default function Customers() {
       alert(`${successCount}건이 등록되었습니다.`)
     }
     loadCustomers()
-
-    if (fileInputRef.current) fileInputRef.current.value = ''
   }
 
   const downloadTemplate = () => {
@@ -694,6 +706,80 @@ export default function Customers() {
               <button onClick={handleSave}
                 className="flex-1 py-2.5 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition text-sm font-medium">
                 {editingCustomer ? '수정' : '등록'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 일괄등록 미리보기 모달 */}
+      {showImportModal && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl w-full max-w-4xl max-h-[90vh] overflow-hidden flex flex-col">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
+              <div>
+                <h3 className="text-lg font-bold text-gray-800">일괄등록 미리보기</h3>
+                <p className="text-sm text-gray-500 mt-0.5">
+                  파일: {importFileName} · <strong className="text-emerald-600">{importPreview.length}건</strong> 등록 예정
+                </p>
+              </div>
+              <button onClick={() => { setShowImportModal(false); setImportPreview([]) }} className="p-1 text-gray-400 hover:text-gray-600">
+                <X size={20} />
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-auto p-4">
+              <p className="text-xs text-gray-400 mb-2">1행(헤더)은 제외되었습니다. 아래 데이터가 등록됩니다.</p>
+              <div className="overflow-x-auto border border-gray-200 rounded-lg">
+                <table className="w-full text-sm">
+                  <thead className="bg-gray-50 sticky top-0">
+                    <tr>
+                      <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 whitespace-nowrap">#</th>
+                      <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 whitespace-nowrap">고객명</th>
+                      <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 whitespace-nowrap">사업자번호</th>
+                      <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 whitespace-nowrap">고객번호</th>
+                      <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 whitespace-nowrap">담당자</th>
+                      <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 whitespace-nowrap">접수일</th>
+                      <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 whitespace-nowrap">개설상태</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-50">
+                    {importPreview.slice(0, 100).map((row, i) => (
+                      <tr key={i} className="hover:bg-gray-50">
+                        <td className="px-3 py-2 text-xs text-gray-400">{i + 1}</td>
+                        <td className="px-3 py-2 text-xs text-gray-800 font-medium whitespace-nowrap">{row.customer_name || '-'}</td>
+                        <td className="px-3 py-2 text-xs text-gray-600 whitespace-nowrap">{row.business_number || '-'}</td>
+                        <td className="px-3 py-2 text-xs text-gray-600 whitespace-nowrap">{row.customer_number || '-'}</td>
+                        <td className="px-3 py-2 text-xs text-gray-600 whitespace-nowrap">{row.manager || '-'}</td>
+                        <td className="px-3 py-2 text-xs text-gray-600 whitespace-nowrap">{row.reception_date || '-'}</td>
+                        <td className="px-3 py-2 text-xs whitespace-nowrap">
+                          <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${statusBadge(row.opening_status || '')}`}>
+                            {row.opening_status || '-'}
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              {importPreview.length > 100 && (
+                <p className="text-xs text-gray-400 mt-2 text-center">상위 100건만 표시 · 전체 {importPreview.length}건 등록 예정</p>
+              )}
+            </div>
+
+            <div className="flex gap-3 px-6 py-4 border-t border-gray-100">
+              <button
+                onClick={() => { setShowImportModal(false); setImportPreview([]) }}
+                className="flex-1 py-2.5 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition text-sm font-medium"
+              >
+                취소
+              </button>
+              <button
+                onClick={handleConfirmImport}
+                disabled={importing}
+                className="flex-1 py-2.5 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 disabled:opacity-50 transition text-sm font-medium"
+              >
+                {importing ? '등록 중...' : `${importPreview.length}건 등록하기`}
               </button>
             </div>
           </div>
