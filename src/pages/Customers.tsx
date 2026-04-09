@@ -63,6 +63,8 @@ export default function Customers() {
   const [importFileName, setImportFileName] = useState('')
   const [showImportModal, setShowImportModal] = useState(false)
   const [importing, setImporting] = useState(false)
+  const [editingImportIdx, setEditingImportIdx] = useState<number | null>(null)
+  const [editingImportForm, setEditingImportForm] = useState<any>({})
 
   // 필터
   const [showFilters, setShowFilters] = useState(false)
@@ -715,21 +717,21 @@ export default function Customers() {
       {/* 일괄등록 미리보기 모달 */}
       {showImportModal && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl w-full max-w-4xl max-h-[90vh] overflow-hidden flex flex-col">
+          <div className="bg-white rounded-2xl w-full max-w-5xl max-h-[90vh] overflow-hidden flex flex-col">
             <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
               <div>
                 <h3 className="text-lg font-bold text-gray-800">일괄등록 미리보기</h3>
                 <p className="text-sm text-gray-500 mt-0.5">
-                  파일: {importFileName} · <strong className="text-emerald-600">{importPreview.length}건</strong> 등록 예정
+                  파일: {importFileName} · <strong className="text-emerald-600">{importPreview.length}건</strong> 등록 예정 · 행을 클릭하면 수정할 수 있습니다
                 </p>
               </div>
-              <button onClick={() => { setShowImportModal(false); setImportPreview([]) }} className="p-1 text-gray-400 hover:text-gray-600">
+              <button onClick={() => { setShowImportModal(false); setImportPreview([]); setEditingImportIdx(null) }} className="p-1 text-gray-400 hover:text-gray-600">
                 <X size={20} />
               </button>
             </div>
 
             <div className="flex-1 overflow-auto p-4">
-              <p className="text-xs text-gray-400 mb-2">1행(헤더)은 제외되었습니다. 아래 데이터가 등록됩니다.</p>
+              <p className="text-xs text-gray-400 mb-2">1행(헤더)은 제외되었습니다. 행을 클릭하면 상세 정보를 수정/추가할 수 있습니다.</p>
               <div className="overflow-x-auto border border-gray-200 rounded-lg">
                 <table className="w-full text-sm">
                   <thead className="bg-gray-50 sticky top-0">
@@ -741,11 +743,12 @@ export default function Customers() {
                       <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 whitespace-nowrap">담당자</th>
                       <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 whitespace-nowrap">접수일</th>
                       <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 whitespace-nowrap">개설상태</th>
+                      <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 whitespace-nowrap">관리</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-50">
                     {importPreview.slice(0, 100).map((row, i) => (
-                      <tr key={i} className="hover:bg-gray-50">
+                      <tr key={i} className="hover:bg-emerald-50/50 cursor-pointer transition" onClick={() => { setEditingImportIdx(i); setEditingImportForm({ ...row }) }}>
                         <td className="px-3 py-2 text-xs text-gray-400">{i + 1}</td>
                         <td className="px-3 py-2 text-xs text-gray-800 font-medium whitespace-nowrap">{row.customer_name || '-'}</td>
                         <td className="px-3 py-2 text-xs text-gray-600 whitespace-nowrap">{row.business_number || '-'}</td>
@@ -755,6 +758,17 @@ export default function Customers() {
                         <td className="px-3 py-2 text-xs whitespace-nowrap">
                           <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${statusBadge(row.opening_status || '')}`}>
                             {row.opening_status || '-'}
+                          </span>
+                        </td>
+                        <td className="px-3 py-2 text-xs whitespace-nowrap">
+                          <span className="text-emerald-600 hover:underline" onClick={(e) => { e.stopPropagation(); setEditingImportIdx(i); setEditingImportForm({ ...row }) }}>
+                            <Edit2 size={13} />
+                          </span>
+                          <span className="text-red-400 hover:text-red-600 ml-2" onClick={(e) => {
+                            e.stopPropagation()
+                            setImportPreview((prev) => prev.filter((_, idx) => idx !== i))
+                          }}>
+                            <Trash2 size={13} />
                           </span>
                         </td>
                       </tr>
@@ -769,17 +783,98 @@ export default function Customers() {
 
             <div className="flex gap-3 px-6 py-4 border-t border-gray-100">
               <button
-                onClick={() => { setShowImportModal(false); setImportPreview([]) }}
+                onClick={() => { setShowImportModal(false); setImportPreview([]); setEditingImportIdx(null) }}
                 className="flex-1 py-2.5 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition text-sm font-medium"
               >
                 취소
               </button>
               <button
                 onClick={handleConfirmImport}
-                disabled={importing}
+                disabled={importing || importPreview.length === 0}
                 className="flex-1 py-2.5 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 disabled:opacity-50 transition text-sm font-medium"
               >
                 {importing ? '등록 중...' : `${importPreview.length}건 등록하기`}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 일괄등록 개별 수정 모달 */}
+      {editingImportIdx !== null && (
+        <div className="fixed inset-0 bg-black/30 z-[60] flex items-center justify-center p-4" onClick={() => setEditingImportIdx(null)}>
+          <div className="bg-white rounded-2xl w-full max-w-2xl max-h-[85vh] overflow-y-auto p-6" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-4">
+              <h4 className="font-bold text-gray-800">
+                #{editingImportIdx + 1} {editingImportForm.customer_name || '고객'} 수정
+              </h4>
+              <button onClick={() => setEditingImportIdx(null)} className="p-1 text-gray-400 hover:text-gray-600">
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {CUSTOMER_FIELDS.map((field) => (
+                <div key={field.key}>
+                  <label className="block text-xs font-medium text-gray-500 mb-1">
+                    {field.label} {field.required && <span className="text-red-500">*</span>}
+                  </label>
+                  {field.type === 'select' && field.options ? (
+                    <select
+                      value={editingImportForm[field.key] || ''}
+                      onChange={(e) => setEditingImportForm({ ...editingImportForm, [field.key]: e.target.value })}
+                      className="w-full px-2.5 py-1.5 border border-gray-300 rounded-lg text-sm bg-white focus:ring-2 focus:ring-emerald-500 outline-none"
+                    >
+                      <option value="">선택</option>
+                      {field.options.map((opt) => <option key={opt} value={opt}>{opt}</option>)}
+                    </select>
+                  ) : field.type === 'select-other' && field.options ? (
+                    <div className="flex gap-1.5">
+                      <select
+                        value={field.options.includes(editingImportForm[field.key]) ? editingImportForm[field.key] : editingImportForm[field.key] ? '기타' : ''}
+                        onChange={(e) => {
+                          if (e.target.value === '기타') setEditingImportForm({ ...editingImportForm, [field.key]: '' })
+                          else setEditingImportForm({ ...editingImportForm, [field.key]: e.target.value })
+                        }}
+                        className="px-2.5 py-1.5 border border-gray-300 rounded-lg text-sm bg-white focus:ring-2 focus:ring-emerald-500 outline-none"
+                      >
+                        <option value="">선택</option>
+                        {field.options.map((opt) => <option key={opt} value={opt}>{opt}</option>)}
+                        <option value="기타">기타</option>
+                      </select>
+                      {editingImportForm[field.key] && !field.options.includes(editingImportForm[field.key]) && (
+                        <input type="text" value={editingImportForm[field.key]} onChange={(e) => setEditingImportForm({ ...editingImportForm, [field.key]: e.target.value })}
+                          className="flex-1 px-2.5 py-1.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 outline-none" placeholder="직접 입력" />
+                      )}
+                    </div>
+                  ) : (
+                    <input
+                      type={field.type || 'text'}
+                      value={editingImportForm[field.key] || ''}
+                      onChange={(e) => {
+                        let val = e.target.value
+                        if (field.key === 'business_number' || field.key === 'customer_number') val = val.replace(/[^0-9]/g, '')
+                        setEditingImportForm({ ...editingImportForm, [field.key]: val })
+                      }}
+                      maxLength={field.key === 'business_number' ? 10 : field.key === 'customer_number' ? 9 : undefined}
+                      className="w-full px-2.5 py-1.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 outline-none"
+                    />
+                  )}
+                </div>
+              ))}
+            </div>
+
+            <div className="flex gap-3 mt-5">
+              <button onClick={() => setEditingImportIdx(null)}
+                className="flex-1 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition text-sm">
+                취소
+              </button>
+              <button onClick={() => {
+                setImportPreview((prev) => prev.map((row, idx) => idx === editingImportIdx ? { ...editingImportForm } : row))
+                setEditingImportIdx(null)
+              }}
+                className="flex-1 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition text-sm">
+                적용
               </button>
             </div>
           </div>
