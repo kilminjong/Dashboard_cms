@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef, useMemo, Fragment } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import type { Customer } from '../types'
 import { Plus, Search, Edit2, Trash2, X, Upload, FileSpreadsheet, Filter, ChevronUp, ChevronDown, RotateCcw } from 'lucide-react'
@@ -66,9 +66,13 @@ export default function Customers() {
   const [editingImportIdx, setEditingImportIdx] = useState<number | null>(null)
   const [editingImportForm, setEditingImportForm] = useState<any>({})
 
+  // URL 파라미터에서 필터 초기값 가져오기
+  const [searchParams] = useSearchParams()
+  const urlStatus = searchParams.get('status') || ''
+
   // 필터
-  const [showFilters, setShowFilters] = useState(false)
-  const [filterStatus, setFilterStatus] = useState('')
+  const [showFilters, setShowFilters] = useState(!!urlStatus)
+  const [filterStatus, setFilterStatus] = useState(urlStatus)
   const [filterManager, setFilterManager] = useState('')
   const [filterErp, setFilterErp] = useState('')
   const [filterConnection, setFilterConnection] = useState('')
@@ -120,7 +124,13 @@ export default function Customers() {
     }
 
     // 조건 필터
-    if (filterStatus) result = result.filter((c) => c.opening_status === filterStatus)
+    if (filterStatus) {
+      if (filterStatus === '개설완료') {
+        result = result.filter((c) => c.opening_status === '개설완료' || c.opening_status === '이행완료')
+      } else {
+        result = result.filter((c) => c.opening_status === filterStatus)
+      }
+    }
     if (filterManager) result = result.filter((c) => c.manager === filterManager)
     if (filterErp) result = result.filter((c) => c.erp_company === filterErp)
     if (filterConnection) result = result.filter((c) => c.connection_status === filterConnection)
