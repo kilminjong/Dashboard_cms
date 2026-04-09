@@ -11,6 +11,7 @@ import {
   Bot,
 } from 'lucide-react'
 import { useState } from 'react'
+import { useNotification } from '../../hooks/useNotification'
 
 const navItems = [
   { to: '/', icon: LayoutDashboard, label: '대시보드' },
@@ -23,6 +24,7 @@ const navItems = [
 export default function Layout() {
   const navigate = useNavigate()
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  useNotification()
 
   const handleLogout = async () => {
     await supabase.auth.signOut()

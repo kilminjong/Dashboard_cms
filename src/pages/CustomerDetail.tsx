@@ -149,10 +149,24 @@ export default function CustomerDetail() {
       }
     })
 
-    await supabase
+    // 변경된 필드만 업데이트
+    const updateData: Record<string, string> = { updated_at: new Date().toISOString() }
+    Object.keys(form).forEach((key) => {
+      if (form[key] !== originalForm[key]) {
+        updateData[key] = form[key]
+      }
+    })
+
+    const { error: updateError } = await supabase
       .from('customers')
-      .update({ ...form, updated_at: new Date().toISOString() })
+      .update(updateData)
       .eq('id', customer.id)
+
+    if (updateError) {
+      alert('저장에 실패했습니다: ' + updateError.message)
+      setSaving(false)
+      return
+    }
 
     if (changes.length > 0 && user) {
       await supabase.from('customer_history').insert(
