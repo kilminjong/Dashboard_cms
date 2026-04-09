@@ -1,24 +1,26 @@
-import { useEffect, useState, useRef, useMemo } from 'react'
+import { useEffect, useState, useRef, useMemo, Fragment } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import type { Customer } from '../types'
 import { Plus, Search, Edit2, Trash2, X, Upload, Download, Filter, ChevronUp, ChevronDown, RotateCcw } from 'lucide-react'
 
 const CUSTOMER_FIELDS: { key: string; label: string; required?: boolean; type?: string; options?: string[] }[] = [
+  // 필수 입력사항 (상단 배치)
   { key: 'customer_name', label: '고객명', required: true },
   { key: 'business_number', label: '사업자번호', required: true },
   { key: 'customer_number', label: '고객번호', required: true },
+  { key: 'manager', label: '담당자', required: true },
+  { key: 'reception_date', label: '신규접수일', type: 'date', required: true },
+  { key: 'opening_status', label: '개설상태', type: 'select', options: ['개설대기', '개설진행', '개설취소', '개설완료', '이행완료'], required: true },
+  // 선택 입력사항
   { key: 'management_code', label: '관리코드' },
   { key: 'build_type', label: '구축구분' },
   { key: 'management_type', label: '관리구분' },
   { key: 'construction_type', label: '구축형' },
-  { key: 'manager', label: '담당자', required: true },
-  { key: 'reception_date', label: '신규접수일', type: 'date', required: true },
   { key: 'customer_contact_person', label: '고객담당자' },
   { key: 'customer_department', label: '담당 부서', type: 'select-other', options: ['인사팀', '재무팀', '전산팀'] },
   { key: 'contact_phone', label: '담당자 연락처' },
   { key: 'contact_email', label: '담당자 이메일', type: 'email' },
-  { key: 'opening_status', label: '개설상태', type: 'select', options: ['개설대기', '개설진행', '개설취소', '개설완료', '이행완료'] },
   { key: 'opening_date', label: '개설/이행일', type: 'date' },
   { key: 'connection_status', label: '연계상태', type: 'select', options: ['ERP연계대기', 'ERP연계진행', 'ERP연계완료', 'ERP청구완료', '연계청구보류'] },
   { key: 'connection_date', label: '연계일자', type: 'date' },
@@ -181,6 +183,20 @@ export default function Customers() {
       return
     }
 
+    // 사업자번호 10자리 검증
+    const bizNum = form.business_number?.replace(/[^0-9]/g, '')
+    if (bizNum && bizNum.length !== 10) {
+      alert('사업자번호는 10자리로 입력해주세요.')
+      return
+    }
+
+    // 고객번호 9자리 검증
+    const custNum = form.customer_number?.replace(/[^0-9]/g, '')
+    if (custNum && custNum.length !== 9) {
+      alert('고객번호는 9자리로 입력해주세요.')
+      return
+    }
+
     // 빈 날짜 필드를 null로 변환 (DB date 타입 에러 방지)
     const cleanForm = { ...form }
     CUSTOMER_FIELDS.forEach((field) => {
@@ -277,12 +293,27 @@ export default function Customers() {
   }
 
   const downloadTemplate = () => {
-    const headers = CUSTOMER_FIELDS.map((f) => f.label).join(',')
-    const blob = new Blob(['\uFEFF' + headers + '\n'], { type: 'text/csv;charset=utf-8;' })
+    const headers = CUSTOMER_FIELDS.map((f) => f.label)
+    // 예시 데이터 2행 포함
+    const example1 = [
+      '(주)테스트기업', '1234567890', '123456789', '담당자명', '2025-01-15', '개설대기',
+      '', '', '', '', '', '인사팀', '010-1234-5678', 'test@test.com',
+      '', 'ERP연계대기', '', '더존비즈온', 'ICUBE', '', 'DB to DB',
+      '전산실', 'Y', '192.168.0.1', 'N', '중', '',
+    ]
+    const example2 = [
+      '(주)샘플회사', '9876543210', '987654321', '담당자명', '2025-02-01', '개설진행',
+      '', '', '', '', '', '전산팀', '010-9876-5432', 'sample@sample.com',
+      '', 'ERP연계진행', '', '영림원', 'ERP10', '', 'API',
+      '내부', 'N', '10.0.0.1', 'Y', '상', '',
+    ]
+
+    const csvContent = '\uFEFF' + headers.join(',') + '\n' + example1.join(',') + '\n' + example2.join(',') + '\n'
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
-    a.download = '고객등록_템플릿.csv'
+    a.download = '고객등록_양식.csv'
     a.click()
     URL.revokeObjectURL(url)
   }
@@ -525,60 +556,72 @@ export default function Customers() {
               </button>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              {CUSTOMER_FIELDS.map((field) => (
-                <div key={field.key} className={field.required ? 'bg-blue-50/50 rounded-lg p-2.5 -m-0.5' : ''}>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    {field.label} {field.required && <span className="text-red-500">*</span>}
-                  </label>
-                  {field.type === 'select' && field.options ? (
-                    <select
-                      value={form[field.key]}
-                      onChange={(e) => setForm({ ...form, [field.key]: e.target.value })}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent outline-none text-sm bg-white"
-                    >
-                      <option value="">선택하세요</option>
-                      {field.options.map((opt) => (
-                        <option key={opt} value={opt}>{opt}</option>
-                      ))}
-                    </select>
-                  ) : field.type === 'select-other' && field.options ? (
-                    <div className="flex gap-2">
-                      <select
-                        value={field.options.includes(form[field.key]) ? form[field.key] : form[field.key] ? '기타' : ''}
-                        onChange={(e) => {
-                          if (e.target.value === '기타') setForm({ ...form, [field.key]: '' })
-                          else setForm({ ...form, [field.key]: e.target.value })
-                        }}
-                        className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent outline-none text-sm bg-white"
-                      >
-                        <option value="">선택하세요</option>
-                        {field.options.map((opt) => (
-                          <option key={opt} value={opt}>{opt}</option>
-                        ))}
-                        <option value="기타">기타(직접입력)</option>
-                      </select>
-                      {form[field.key] && !field.options.includes(form[field.key]) && (
-                        <input
-                          type="text"
-                          value={form[field.key]}
-                          onChange={(e) => setForm({ ...form, [field.key]: e.target.value })}
-                          className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent outline-none text-sm"
-                          placeholder="직접 입력"
-                        />
+            {(() => {
+              const requiredCount = CUSTOMER_FIELDS.filter((f) => f.required).length
+              return (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  {CUSTOMER_FIELDS.map((field, idx) => (
+                    <Fragment key={field.key}>
+                      {idx === requiredCount && (
+                        <div className="col-span-1 sm:col-span-2 border-t border-gray-200 pt-2 mt-1">
+                          <p className="text-xs text-gray-400">선택 입력사항</p>
+                        </div>
                       )}
-                    </div>
-                  ) : (
-                    <input
-                      type={field.type || 'text'}
-                      value={form[field.key]}
-                      onChange={(e) => setForm({ ...form, [field.key]: e.target.value })}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent outline-none text-sm"
-                    />
-                  )}
+                      <div className={field.required ? 'bg-blue-50/60 border border-blue-100 rounded-lg p-2.5' : ''}>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          {field.label} {field.required && <span className="text-red-500">*</span>}
+                        </label>
+                        {field.type === 'select' && field.options ? (
+                          <select
+                            value={form[field.key]}
+                            onChange={(e) => setForm({ ...form, [field.key]: e.target.value })}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent outline-none text-sm bg-white"
+                          >
+                            <option value="">선택하세요</option>
+                            {field.options.map((opt) => (
+                              <option key={opt} value={opt}>{opt}</option>
+                            ))}
+                          </select>
+                        ) : field.type === 'select-other' && field.options ? (
+                          <div className="flex gap-2">
+                            <select
+                              value={field.options.includes(form[field.key]) ? form[field.key] : form[field.key] ? '기타' : ''}
+                              onChange={(e) => {
+                                if (e.target.value === '기타') setForm({ ...form, [field.key]: '' })
+                                else setForm({ ...form, [field.key]: e.target.value })
+                              }}
+                              className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent outline-none text-sm bg-white"
+                            >
+                              <option value="">선택하세요</option>
+                              {field.options.map((opt) => (
+                                <option key={opt} value={opt}>{opt}</option>
+                              ))}
+                              <option value="기타">기타(직접입력)</option>
+                            </select>
+                            {form[field.key] && !field.options.includes(form[field.key]) && (
+                              <input
+                                type="text"
+                                value={form[field.key]}
+                                onChange={(e) => setForm({ ...form, [field.key]: e.target.value })}
+                                className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent outline-none text-sm"
+                                placeholder="직접 입력"
+                              />
+                            )}
+                          </div>
+                        ) : (
+                          <input
+                            type={field.type || 'text'}
+                            value={form[field.key]}
+                            onChange={(e) => setForm({ ...form, [field.key]: e.target.value })}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent outline-none text-sm"
+                          />
+                        )}
+                      </div>
+                    </Fragment>
+                  ))}
                 </div>
-              ))}
-            </div>
+              )
+            })()}
 
             <div className="flex gap-3 mt-6">
               <button onClick={() => setShowModal(false)}
