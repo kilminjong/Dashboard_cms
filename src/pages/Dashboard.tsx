@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../hooks/useAuth'
-import { Users, UserCheck, Calendar, Sparkles, RefreshCw, Clock, XCircle } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
+import { Users, UserCheck, Calendar, Sparkles, RefreshCw, Clock, XCircle, UserCircle } from 'lucide-react'
 import {
   PieChart, Pie, Cell, ResponsiveContainer, Tooltip,
   XAxis, YAxis, CartesianGrid,
@@ -35,8 +36,17 @@ const STATUS_COLORS: Record<string, string> = {
   '개설취소': '#ef4444',
 }
 
+interface MyStats {
+  total: number
+  opened: number
+  waiting: number
+  progress: number
+  canceled: number
+}
+
 export default function Dashboard() {
   const { profile } = useAuth()
+  const navigate = useNavigate()
   const [stats, setStats] = useState<Stats>({
     totalCustomers: 0,
     openedCustomers: 0,
@@ -48,6 +58,8 @@ export default function Dashboard() {
   const [recentCustomers, setRecentCustomers] = useState<any[]>([])
   const [monthlyData, setMonthlyData] = useState<MonthlyData[]>([])
   const [statusData, setStatusData] = useState<StatusData[]>([])
+  const [myStats, setMyStats] = useState<MyStats>({ total: 0, opened: 0, waiting: 0, progress: 0, canceled: 0 })
+  const [myRecentCustomers, setMyRecentCustomers] = useState<any[]>([])
   const [aiSummary, setAiSummary] = useState('')
   const [aiLoading, setAiLoading] = useState(false)
 
@@ -85,7 +97,7 @@ export default function Dashboard() {
     const today = new Date().toISOString().split('T')[0]
 
     const [customers, schedules] = await Promise.all([
-      supabase.from('customers').select('opening_status').range(0, 9999),
+      supabase.from('customers').select('opening_status, manager, customer_name, business_number, created_at, id').range(0, 9999),
       supabase.from('schedules').select('id', { count: 'exact', head: true })
         .eq('start_date', today),
     ])
@@ -113,6 +125,25 @@ export default function Dashboard() {
       { name: '개설진행', value: progress, color: STATUS_COLORS['개설진행'] },
       { name: '개설취소', value: canceled, color: STATUS_COLORS['개설취소'] },
     ])
+
+    // 내 담당 고객 현황
+    const managerName = profile?.name
+    if (managerName) {
+      const myList = list.filter((c) => c.manager === managerName)
+      const myCat = myList.map((c) => categorizeStatus(c.opening_status))
+      setMyStats({
+        total: myList.length,
+        opened: myCat.filter((s) => s === '개설완료').length,
+        waiting: myCat.filter((s) => s === '개설대기').length,
+        progress: myCat.filter((s) => s === '개설진행').length,
+        canceled: myCat.filter((s) => s === '개설취소').length,
+      })
+      setMyRecentCustomers(
+        myList
+          .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+          .slice(0, 5)
+      )
+    }
   }
 
   const loadRecentCustomers = async () => {
@@ -285,6 +316,67 @@ export default function Dashboard() {
           </div>
         ))}
       </div>
+
+      {/* 내 담당 고객 현황 */}
+      {profile?.name && myStats.total > 0 && (
+        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5 mb-6">
+          <div className="flex items-center gap-2 mb-4">
+            <UserCircle size={20} className="text-emerald-600" />
+            <h3 className="font-semibold text-gray-800">{profile.name} 담당 고객 현황</h3>
+            <span className="text-xs text-gray-400 ml-1">총 {myStats.total.toLocaleString()}건</span>
+          </div>
+
+          {/* 상태 바 */}
+          <div className="flex h-3 rounded-full overflow-hidden mb-3">
+            {myStats.opened > 0 && <div className="bg-emerald-500" style={{ width: `${(myStats.opened / myStats.total) * 100}%` }} />}
+            {myStats.waiting > 0 && <div className="bg-amber-400" style={{ width: `${(myStats.waiting / myStats.total) * 100}%` }} />}
+            {myStats.progress > 0 && <div className="bg-blue-400" style={{ width: `${(myStats.progress / myStats.total) * 100}%` }} />}
+            {myStats.canceled > 0 && <div className="bg-red-400" style={{ width: `${(myStats.canceled / myStats.total) * 100}%` }} />}
+          </div>
+
+          {/* 상태별 수치 */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
+            <div className="flex items-center gap-2">
+              <div className="w-2.5 h-2.5 rounded-full bg-emerald-500"></div>
+              <span className="text-sm text-gray-600">개설완료 <strong className="text-gray-800">{myStats.opened}</strong></span>
+            </div>
+            <div className="flex items-center gap-2">
+              <div className="w-2.5 h-2.5 rounded-full bg-amber-400"></div>
+              <span className="text-sm text-gray-600">개설대기 <strong className="text-gray-800">{myStats.waiting}</strong></span>
+            </div>
+            <div className="flex items-center gap-2">
+              <div className="w-2.5 h-2.5 rounded-full bg-blue-400"></div>
+              <span className="text-sm text-gray-600">개설진행 <strong className="text-gray-800">{myStats.progress}</strong></span>
+            </div>
+            <div className="flex items-center gap-2">
+              <div className="w-2.5 h-2.5 rounded-full bg-red-400"></div>
+              <span className="text-sm text-gray-600">개설취소 <strong className="text-gray-800">{myStats.canceled}</strong></span>
+            </div>
+          </div>
+
+          {/* 내 최근 고객 */}
+          {myRecentCustomers.length > 0 && (
+            <div className="border-t border-gray-100 pt-3">
+              <p className="text-xs text-gray-400 mb-2">최근 등록된 내 담당 고객</p>
+              <div className="space-y-1.5">
+                {myRecentCustomers.map((c) => (
+                  <div key={c.id} className="flex items-center justify-between">
+                    <button
+                      onClick={() => navigate(`/customers/${c.id}`)}
+                      className="text-sm text-emerald-600 font-medium hover:underline truncate"
+                    >
+                      {c.customer_name}
+                    </button>
+                    <span className={`px-2 py-0.5 rounded-full text-xs font-medium shrink-0 ml-2 ${statusBadgeColor(c.opening_status)}`}>
+                      {c.opening_status || '미정'}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* 차트 영역 */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
