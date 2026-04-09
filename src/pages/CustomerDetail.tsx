@@ -13,7 +13,7 @@ const TABS = [
 ] as const
 type Tab = typeof TABS[number]['key']
 
-const FIELD_GROUPS: Record<string, { key: string; label: string; type?: string }[]> = {
+const FIELD_GROUPS: Record<string, { key: string; label: string; type?: string; options?: string[] }[]> = {
   '기본정보': [
     { key: 'customer_name', label: '고객명' },
     { key: 'business_number', label: '사업자번호' },
@@ -28,9 +28,9 @@ const FIELD_GROUPS: Record<string, { key: string; label: string; type?: string }
   ],
   'ERP정보': [
     { key: 'erp_company', label: 'ERP회사' },
-    { key: 'erp_type', label: 'ERP 종류' },
+    { key: 'erp_type', label: 'ERP 종류', type: 'select', options: ['영림원', 'Amaranth10', 'ERP10', '옴니이솔', 'IU', 'ICUBE', 'SAP', '오직', '디모데'] },
     { key: 'erp_db', label: 'ERP DB' },
-    { key: 'connection_method', label: '연계방식' },
+    { key: 'connection_method', label: '연계방식', type: 'select', options: ['DB to DB', 'API', '3 Tire', 'RFC'] },
     { key: 'server_location', label: '서버PC 상세위치' },
     { key: 'schedule_use', label: '스케줄사용여부' },
     { key: 'customer_ip', label: '고객사 IP' },
@@ -354,12 +354,25 @@ export default function CustomerDetail() {
                 <label className="text-sm font-medium text-gray-500 sm:w-40 shrink-0">{field.label}</label>
                 <div className="flex-1">
                   {editing ? (
-                    <input
-                      type={field.type || 'text'}
-                      value={form[field.key] || ''}
-                      onChange={(e) => setForm({ ...form, [field.key]: e.target.value })}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent outline-none text-sm"
-                    />
+                    field.type === 'select' && field.options ? (
+                      <select
+                        value={form[field.key] || ''}
+                        onChange={(e) => setForm({ ...form, [field.key]: e.target.value })}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent outline-none text-sm bg-white"
+                      >
+                        <option value="">선택하세요</option>
+                        {field.options.map((opt) => (
+                          <option key={opt} value={opt}>{opt}</option>
+                        ))}
+                      </select>
+                    ) : (
+                      <input
+                        type={field.type || 'text'}
+                        value={form[field.key] || ''}
+                        onChange={(e) => setForm({ ...form, [field.key]: e.target.value })}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent outline-none text-sm"
+                      />
+                    )
                   ) : (
                     <span className="text-sm text-gray-800">
                       {field.key === 'opening_status' && form[field.key] ? (
