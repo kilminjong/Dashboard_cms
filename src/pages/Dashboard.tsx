@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../hooks/useAuth'
 import { useNavigate } from 'react-router-dom'
-import { Users, UserCheck, Calendar, Sparkles, RefreshCw, Clock, XCircle, UserCircle } from 'lucide-react'
+import { Users, UserCheck, Calendar, Sparkles, RefreshCw, Clock, XCircle, UserCircle, X } from 'lucide-react'
 import {
   PieChart, Pie, Cell, ResponsiveContainer, Tooltip,
   XAxis, YAxis, CartesianGrid,
@@ -60,6 +60,9 @@ export default function Dashboard() {
   const [statusData, setStatusData] = useState<StatusData[]>([])
   const [myStats, setMyStats] = useState<MyStats>({ total: 0, opened: 0, waiting: 0, progress: 0, canceled: 0 })
   const [myRecentCustomers, setMyRecentCustomers] = useState<any[]>([])
+  const [allCustomers, setAllCustomers] = useState<any[]>([])
+  const [todayScheduleList, setTodayScheduleList] = useState<any[]>([])
+  const [cardModal, setCardModal] = useState<{ type: string; title: string; data: any[] } | null>(null)
   const [aiSummary, setAiSummary] = useState('')
   const [aiLoading, setAiLoading] = useState(false)
 
@@ -96,13 +99,17 @@ export default function Dashboard() {
   const loadStats = async () => {
     const today = new Date().toISOString().split('T')[0]
 
-    const [customers, schedules] = await Promise.all([
-      supabase.from('customers').select('opening_status, manager, customer_name, business_number, created_at, id').range(0, 9999),
+    const [customers, schedules, todaySchedules] = await Promise.all([
+      supabase.from('customers').select('opening_status, manager, customer_name, business_number, customer_number, created_at, reception_date, id').range(0, 9999),
       supabase.from('schedules').select('id', { count: 'exact', head: true })
         .eq('start_date', today),
+      supabase.from('schedules').select('id, title, description, start_time, end_time, is_done')
+        .eq('start_date', today).order('start_time'),
     ])
 
     const list = customers.data || []
+    setAllCustomers(list)
+    setTodayScheduleList(todaySchedules.data || [])
     const categorized = list.map((c) => categorizeStatus(c.opening_status))
 
     const opened = categorized.filter((s) => s === '개설완료').length
@@ -141,7 +148,7 @@ export default function Dashboard() {
       })
       setMyRecentCustomers(
         myList
-          .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+          .sort((a, b) => (b.reception_date || '').localeCompare(a.reception_date || ''))
           .slice(0, 5)
       )
     }
@@ -245,6 +252,28 @@ export default function Dashboard() {
     setAiLoading(false)
   }
 
+  const getManagerName = () => profile?.name || ''
+
+  const handleCardClick = (label: string) => {
+    const mgr = getManagerName()
+    if (label === '전체 고객') {
+      navigate('/customers')
+    } else if (label === '개설 완료') {
+      navigate('/customers?status=개설완료')
+    } else if (label === '개설 대기') {
+      const data = allCustomers.filter((c) => categorizeStatus(c.opening_status) === '개설대기' && (!mgr || c.manager === mgr))
+      setCardModal({ type: 'customers', title: `${mgr || ''} 개설대기 고객`, data })
+    } else if (label === '개설 진행') {
+      const data = allCustomers.filter((c) => categorizeStatus(c.opening_status) === '개설진행' && (!mgr || c.manager === mgr))
+      setCardModal({ type: 'customers', title: `${mgr || ''} 개설진행 고객`, data })
+    } else if (label === '개설 취소') {
+      const data = allCustomers.filter((c) => categorizeStatus(c.opening_status) === '개설취소' && (!mgr || c.manager === mgr))
+      setCardModal({ type: 'customers', title: `${mgr || ''} 개설취소 고객`, data })
+    } else if (label === '오늘 일정') {
+      setCardModal({ type: 'schedules', title: '오늘 일정', data: todayScheduleList })
+    }
+  }
+
   const cards = [
     { label: '전체 고객', value: stats.totalCustomers, icon: Users, color: 'bg-blue-500' },
     { label: '개설 완료', value: stats.openedCustomers, icon: UserCheck, color: 'bg-emerald-500' },
@@ -304,7 +333,9 @@ export default function Dashboard() {
       {/* 통계 카드 */}
       <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4 mb-6">
         {cards.map((card) => (
-          <div key={card.label} className="bg-white rounded-xl p-5 shadow-sm border border-gray-100">
+          <div key={card.label}
+            onClick={() => handleCardClick(card.label)}
+            className="bg-white rounded-xl p-5 shadow-sm border border-gray-100 cursor-pointer hover:shadow-md hover:border-gray-200 transition">
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-gray-500">{card.label}</p>
@@ -507,6 +538,69 @@ export default function Dashboard() {
           )}
         </div>
       </div>
+
+      {/* 카드 클릭 모달 */}
+      {cardModal && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => setCardModal(null)}>
+          <div className="bg-white rounded-2xl w-full max-w-lg max-h-[80vh] overflow-hidden flex flex-col" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
+              <div>
+                <h3 className="font-bold text-gray-800">{cardModal.title}</h3>
+                <p className="text-xs text-gray-400 mt-0.5">{cardModal.data.length}건</p>
+              </div>
+              <button onClick={() => setCardModal(null)} className="p-1 text-gray-400 hover:text-gray-600">
+                <X size={20} />
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto">
+              {cardModal.type === 'schedules' ? (
+                // 오늘 일정
+                <div className="divide-y divide-gray-50">
+                  {cardModal.data.length === 0 ? (
+                    <p className="text-center py-10 text-gray-300 text-sm">오늘 등록된 일정이 없습니다.</p>
+                  ) : (
+                    cardModal.data.map((s: any) => (
+                      <div key={s.id} className={`px-5 py-3 ${s.is_done ? 'opacity-50' : ''}`}>
+                        <div className="flex items-center justify-between">
+                          <span className={`font-medium text-sm text-gray-800 ${s.is_done ? 'line-through' : ''}`}>{s.title}</span>
+                          {s.is_done && <span className="text-xs text-emerald-600 font-medium">완료</span>}
+                        </div>
+                        <div className="flex items-center gap-1.5 mt-1">
+                          <Clock size={12} className="text-gray-400" />
+                          <span className="text-xs text-gray-500">{s.start_time?.slice(0, 5)} ~ {s.end_time?.slice(0, 5)}</span>
+                        </div>
+                        {s.description && <p className="text-xs text-gray-400 mt-1">{s.description}</p>}
+                      </div>
+                    ))
+                  )}
+                </div>
+              ) : (
+                // 고객 목록
+                <div className="divide-y divide-gray-50">
+                  {cardModal.data.length === 0 ? (
+                    <p className="text-center py-10 text-gray-300 text-sm">해당 고객이 없습니다.</p>
+                  ) : (
+                    cardModal.data.map((c: any) => (
+                      <div key={c.id} className="px-5 py-3 hover:bg-gray-50 transition cursor-pointer" onClick={() => { setCardModal(null); navigate(`/customers/${c.id}`) }}>
+                        <div className="flex items-center justify-between">
+                          <span className="font-medium text-sm text-emerald-600">{c.customer_name}</span>
+                          <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${statusBadgeColor(c.opening_status)}`}>
+                            {c.opening_status || '미정'}
+                          </span>
+                        </div>
+                        <p className="text-xs text-gray-500 mt-0.5">
+                          {c.customer_number || '-'} · {c.business_number || '-'} · {c.manager || '-'}
+                        </p>
+                      </div>
+                    ))
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
