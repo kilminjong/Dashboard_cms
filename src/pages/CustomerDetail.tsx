@@ -22,8 +22,8 @@ const FIELD_GROUPS: Record<string, { key: string; label: string; type?: string; 
     { key: 'build_type', label: '구축구분' },
     { key: 'management_type', label: '관리구분' },
     { key: 'construction_type', label: '구축형' },
-    { key: 'sensitive_customer', label: '민감고객' },
-    { key: 'intimacy', label: '친밀도' },
+    { key: 'sensitive_customer', label: '민감고객', type: 'select', options: ['Y', 'N'] },
+    { key: 'intimacy', label: '친밀도', type: 'select', options: ['상', '중', '하'] },
     { key: 'duplicate_check', label: '중복체크' },
   ],
   'ERP정보': [
@@ -31,22 +31,22 @@ const FIELD_GROUPS: Record<string, { key: string; label: string; type?: string; 
     { key: 'erp_type', label: 'ERP 종류', type: 'select', options: ['영림원', 'Amaranth10', 'ERP10', '옴니이솔', 'IU', 'ICUBE', 'SAP', '오직', '디모데'] },
     { key: 'erp_db', label: 'ERP DB' },
     { key: 'connection_method', label: '연계방식', type: 'select', options: ['DB to DB', 'API', '3 Tire', 'RFC'] },
-    { key: 'server_location', label: '서버PC 상세위치' },
-    { key: 'schedule_use', label: '스케줄사용여부' },
+    { key: 'server_location', label: '서버PC 상세위치', type: 'select-other', options: ['내부', '전산실'] },
+    { key: 'schedule_use', label: '스케줄사용여부', type: 'select', options: ['Y', 'N'] },
     { key: 'customer_ip', label: '고객사 IP' },
   ],
   '담당자': [
     { key: 'manager', label: '담당자' },
     { key: 'customer_contact_person', label: '고객담당자' },
-    { key: 'customer_department', label: '담당 부서' },
+    { key: 'customer_department', label: '담당 부서', type: 'select-other', options: ['인사팀', '재무팀', '전산팀'] },
     { key: 'contact_phone', label: '담당자 연락처' },
     { key: 'contact_email', label: '담당자 이메일', type: 'email' },
   ],
   '계약현황': [
     { key: 'reception_date', label: '신규접수일', type: 'date' },
-    { key: 'opening_status', label: '개설상태' },
+    { key: 'opening_status', label: '개설상태', type: 'select', options: ['개설대기', '개설진행', '개설취소', '개설완료', '이행완료'] },
     { key: 'opening_date', label: '개설/이행일', type: 'date' },
-    { key: 'connection_status', label: '연계상태' },
+    { key: 'connection_status', label: '연계상태', type: 'select', options: ['ERP연계대기', 'ERP연계진행', 'ERP연계완료', 'ERP청구완료', '연계청구보류'] },
     { key: 'connection_date', label: '연계일자', type: 'date' },
   ],
 }
@@ -365,6 +365,34 @@ export default function CustomerDetail() {
                           <option key={opt} value={opt}>{opt}</option>
                         ))}
                       </select>
+                    ) : field.type === 'select-other' && field.options ? (
+                      <div className="flex gap-2">
+                        <select
+                          value={field.options.includes(form[field.key]) ? form[field.key] : '기타'}
+                          onChange={(e) => {
+                            if (e.target.value === '기타') {
+                              setForm({ ...form, [field.key]: '' })
+                            } else {
+                              setForm({ ...form, [field.key]: e.target.value })
+                            }
+                          }}
+                          className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent outline-none text-sm bg-white"
+                        >
+                          {field.options.map((opt) => (
+                            <option key={opt} value={opt}>{opt}</option>
+                          ))}
+                          <option value="기타">기타(직접입력)</option>
+                        </select>
+                        {!field.options.includes(form[field.key]) && (
+                          <input
+                            type="text"
+                            value={form[field.key] || ''}
+                            onChange={(e) => setForm({ ...form, [field.key]: e.target.value })}
+                            className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent outline-none text-sm"
+                            placeholder="직접 입력"
+                          />
+                        )}
+                      </div>
                     ) : (
                       <input
                         type={field.type || 'text'}
