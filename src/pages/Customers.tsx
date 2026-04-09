@@ -722,7 +722,7 @@ export default function Customers() {
               <div>
                 <h3 className="text-lg font-bold text-gray-800">일괄등록 미리보기</h3>
                 <p className="text-sm text-gray-500 mt-0.5">
-                  파일: {importFileName} · <strong className="text-emerald-600">{importPreview.length}건</strong> 등록 예정 · 행을 클릭하면 수정할 수 있습니다
+                  파일: {importFileName} · <strong className="text-emerald-600">{importPreview.length}건</strong> 등록 예정
                 </p>
               </div>
               <button onClick={() => { setShowImportModal(false); setImportPreview([]); setEditingImportIdx(null) }} className="p-1 text-gray-400 hover:text-gray-600">
@@ -730,54 +730,77 @@ export default function Customers() {
               </button>
             </div>
 
-            <div className="flex-1 overflow-auto p-4">
-              <p className="text-xs text-gray-400 mb-2">1행(헤더)은 제외되었습니다. 행을 클릭하면 상세 정보를 수정/추가할 수 있습니다.</p>
-              <div className="overflow-x-auto border border-gray-200 rounded-lg">
-                <table className="w-full text-sm">
-                  <thead className="bg-gray-50 sticky top-0">
-                    <tr>
-                      <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 whitespace-nowrap">#</th>
-                      <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 whitespace-nowrap">고객명</th>
-                      <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 whitespace-nowrap">사업자번호</th>
-                      <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 whitespace-nowrap">고객번호</th>
-                      <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 whitespace-nowrap">담당자</th>
-                      <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 whitespace-nowrap">접수일</th>
-                      <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 whitespace-nowrap">개설상태</th>
-                      <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 whitespace-nowrap">관리</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-50">
-                    {importPreview.slice(0, 100).map((row, i) => (
-                      <tr key={i} className="hover:bg-emerald-50/50 cursor-pointer transition" onClick={() => { setEditingImportIdx(i); setEditingImportForm({ ...row }) }}>
-                        <td className="px-3 py-2 text-xs text-gray-400">{i + 1}</td>
-                        <td className="px-3 py-2 text-xs text-gray-800 font-medium whitespace-nowrap">{row.customer_name || '-'}</td>
-                        <td className="px-3 py-2 text-xs text-gray-600 whitespace-nowrap">{row.business_number || '-'}</td>
-                        <td className="px-3 py-2 text-xs text-gray-600 whitespace-nowrap">{row.customer_number || '-'}</td>
-                        <td className="px-3 py-2 text-xs text-gray-600 whitespace-nowrap">{row.manager || '-'}</td>
-                        <td className="px-3 py-2 text-xs text-gray-600 whitespace-nowrap">{row.reception_date || '-'}</td>
-                        <td className="px-3 py-2 text-xs whitespace-nowrap">
-                          <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${statusBadge(row.opening_status || '')}`}>
-                            {row.opening_status || '-'}
-                          </span>
-                        </td>
-                        <td className="px-3 py-2 text-xs whitespace-nowrap">
-                          <span className="text-emerald-600 hover:underline" onClick={(e) => { e.stopPropagation(); setEditingImportIdx(i); setEditingImportForm({ ...row }) }}>
-                            <Edit2 size={13} />
-                          </span>
-                          <span className="text-red-400 hover:text-red-600 ml-2" onClick={(e) => {
+            <div className="flex-1 overflow-auto p-4 space-y-3">
+              <p className="text-xs text-gray-400">1행(헤더)은 제외되었습니다. 카드를 클릭하면 수정/추가할 수 있습니다.</p>
+
+              {importPreview.slice(0, 100).map((row, i) => {
+                // 입력된 필드 수 계산
+                const filledCount = CUSTOMER_FIELDS.filter((f) => row[f.key] && String(row[f.key]).trim()).length
+                // 추가 정보 (기본 6개 외)
+                const extraFields = CUSTOMER_FIELDS.filter(
+                  (f) => !['customer_name','business_number','customer_number','manager','reception_date','opening_status'].includes(f.key) && row[f.key] && String(row[f.key]).trim()
+                )
+
+                return (
+                  <div key={i}
+                    className="border border-gray-200 rounded-xl p-4 hover:border-emerald-300 hover:bg-emerald-50/30 cursor-pointer transition"
+                    onClick={() => { setEditingImportIdx(i); setEditingImportForm({ ...row }) }}
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex-1 min-w-0">
+                        {/* 상단: 핵심 정보 */}
+                        <div className="flex items-center gap-2 mb-2">
+                          <span className="text-xs text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded">#{i + 1}</span>
+                          <span className="font-semibold text-gray-800 truncate">{row.customer_name || '-'}</span>
+                          {row.opening_status && (
+                            <span className={`px-2 py-0.5 rounded-full text-xs font-medium shrink-0 ${statusBadge(row.opening_status)}`}>
+                              {row.opening_status}
+                            </span>
+                          )}
+                        </div>
+
+                        {/* 중단: 주요 정보 */}
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-x-4 gap-y-1 text-xs">
+                          <div><span className="text-gray-400">사업자번호</span> <span className="text-gray-700 ml-1">{row.business_number || '-'}</span></div>
+                          <div><span className="text-gray-400">고객번호</span> <span className="text-gray-700 ml-1">{row.customer_number || '-'}</span></div>
+                          <div><span className="text-gray-400">담당자</span> <span className="text-gray-700 ml-1">{row.manager || '-'}</span></div>
+                          <div><span className="text-gray-400">접수일</span> <span className="text-gray-700 ml-1">{row.reception_date || '-'}</span></div>
+                        </div>
+
+                        {/* 하단: 추가 입력된 정보 태그 */}
+                        {extraFields.length > 0 && (
+                          <div className="flex flex-wrap gap-1.5 mt-2">
+                            {extraFields.map((f) => (
+                              <span key={f.key} className="inline-flex items-center gap-1 px-2 py-0.5 bg-emerald-50 text-emerald-700 rounded text-xs border border-emerald-100">
+                                {f.label}: {String(row[f.key]).length > 10 ? String(row[f.key]).substring(0, 10) + '...' : row[f.key]}
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* 우측: 수정/삭제 + 입력률 */}
+                      <div className="flex flex-col items-end gap-2 shrink-0">
+                        <div className="flex items-center gap-1.5">
+                          <button className="p-1.5 text-gray-300 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition" onClick={(e) => { e.stopPropagation(); setEditingImportIdx(i); setEditingImportForm({ ...row }) }}>
+                            <Edit2 size={14} />
+                          </button>
+                          <button className="p-1.5 text-gray-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition" onClick={(e) => {
                             e.stopPropagation()
                             setImportPreview((prev) => prev.filter((_, idx) => idx !== i))
                           }}>
-                            <Trash2 size={13} />
-                          </span>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+                            <Trash2 size={14} />
+                          </button>
+                        </div>
+                        <span className="text-xs text-gray-400">{filledCount}/{CUSTOMER_FIELDS.length}항목</span>
+                      </div>
+                    </div>
+                  </div>
+                )
+              })}
+
               {importPreview.length > 100 && (
-                <p className="text-xs text-gray-400 mt-2 text-center">상위 100건만 표시 · 전체 {importPreview.length}건 등록 예정</p>
+                <p className="text-xs text-gray-400 text-center">상위 100건만 표시 · 전체 {importPreview.length}건 등록 예정</p>
               )}
             </div>
 
