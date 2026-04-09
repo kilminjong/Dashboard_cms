@@ -1,6 +1,8 @@
+import { useState } from 'react'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { useAuth } from './hooks/useAuth'
 import Layout from './components/layout/Layout'
+import NameSetupModal from './components/NameSetupModal'
 import Login from './pages/Login'
 import Signup from './pages/Signup'
 import Dashboard from './pages/Dashboard'
@@ -11,7 +13,8 @@ import CalendarPage from './pages/Calendar'
 import ProfilePage from './pages/Profile'
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
-  const { session, loading } = useAuth()
+  const { session, profile, loading, refreshProfile } = useAuth()
+  const [nameSetupDone, setNameSetupDone] = useState(false)
 
   if (loading) {
     return (
@@ -23,6 +26,21 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
 
   if (!session) {
     return <Navigate to="/login" replace />
+  }
+
+  // 이름이 없으면 이름 입력 모달 표시
+  const hasName = profile?.name || session.user.user_metadata?.name || nameSetupDone
+  if (!hasName) {
+    return (
+      <NameSetupModal
+        userId={session.user.id}
+        email={session.user.email || ''}
+        onComplete={() => {
+          setNameSetupDone(true)
+          refreshProfile()
+        }}
+      />
+    )
   }
 
   return <>{children}</>

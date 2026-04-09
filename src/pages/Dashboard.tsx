@@ -126,8 +126,9 @@ export default function Dashboard() {
       { name: '개설취소', value: canceled, color: STATUS_COLORS['개설취소'] },
     ])
 
-    // 내 담당 고객 현황
-    const managerName = profile?.name
+    // 내 담당 고객 현황 (profile 또는 auth metadata에서 이름 가져옴)
+    const { data: { user: authUser } } = await supabase.auth.getUser()
+    const managerName = profile?.name || authUser?.user_metadata?.name || ''
     if (managerName) {
       const myList = list.filter((c) => c.manager === managerName)
       const myCat = myList.map((c) => categorizeStatus(c.opening_status))
@@ -182,7 +183,9 @@ export default function Dashboard() {
     setAiLoading(true)
     try {
       const today = new Date().toISOString().split('T')[0]
-      const userName = profile?.name || ''
+      // profile에서 이름 가져오되, 없으면 auth metadata에서 가져옴
+      const { data: { user } } = await supabase.auth.getUser()
+      const userName = profile?.name || user?.user_metadata?.name || ''
 
       // 오늘 캘린더 일정 (시간 + 완료 상태 포함)
       const { data: schedules } = await supabase

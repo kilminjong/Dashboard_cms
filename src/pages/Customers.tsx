@@ -2,7 +2,8 @@ import { useEffect, useState, useRef, useMemo, Fragment } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import type { Customer } from '../types'
-import { Plus, Search, Edit2, Trash2, X, Upload, Download, Filter, ChevronUp, ChevronDown, RotateCcw } from 'lucide-react'
+import { Plus, Search, Edit2, Trash2, X, Upload, FileSpreadsheet, Filter, ChevronUp, ChevronDown, RotateCcw } from 'lucide-react'
+import * as XLSX from 'xlsx'
 
 const CUSTOMER_FIELDS: { key: string; label: string; required?: boolean; type?: string; options?: string[] }[] = [
   // 필수 입력사항 (상단 배치)
@@ -294,7 +295,6 @@ export default function Customers() {
 
   const downloadTemplate = () => {
     const headers = CUSTOMER_FIELDS.map((f) => f.label)
-    // 예시 데이터 2행 포함
     const example1 = [
       '(주)테스트기업', '1234567890', '123456789', '담당자명', '2025-01-15', '개설대기',
       '', '', '', '', '', '인사팀', '010-1234-5678', 'test@test.com',
@@ -308,14 +308,12 @@ export default function Customers() {
       '내부', 'N', '10.0.0.1', 'Y', '상', '',
     ]
 
-    const csvContent = '\uFEFF' + headers.join(',') + '\n' + example1.join(',') + '\n' + example2.join(',') + '\n'
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = '고객등록_양식.csv'
-    a.click()
-    URL.revokeObjectURL(url)
+    const ws = XLSX.utils.aoa_to_sheet([headers, example1, example2])
+    // 컬럼 너비 자동 조정
+    ws['!cols'] = headers.map((h) => ({ wch: Math.max(h.length * 2, 12) }))
+    const wb = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(wb, ws, '고객등록양식')
+    XLSX.writeFile(wb, '고객_일괄등록_양식.xlsx')
   }
 
   const statusBadge = (status: string) => {
@@ -332,8 +330,8 @@ export default function Customers() {
         <h2 className="text-2xl font-bold text-gray-800">고객정보관리</h2>
         <div className="flex flex-wrap gap-2">
           <button onClick={downloadTemplate}
-            className="flex items-center gap-1.5 px-3 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition text-sm">
-            <Download size={16} /> 템플릿
+            className="flex items-center gap-1.5 px-3 py-2 bg-blue-50 border border-blue-200 text-blue-700 rounded-lg hover:bg-blue-100 transition text-sm">
+            <FileSpreadsheet size={16} /> 일괄등록 양식 다운로드
           </button>
           <label className="flex items-center gap-1.5 px-3 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition text-sm cursor-pointer">
             <Upload size={16} /> 일괄등록
