@@ -38,7 +38,7 @@ const CUSTOMER_FIELDS: { key: string; label: string; required?: boolean; type?: 
 ]
 
 const TABLE_COLUMNS = [
-  'customer_name', 'business_number', 'manager', 'opening_status',
+  'customer_name', 'customer_number', 'business_number', 'manager', 'opening_status',
   'connection_status', 'erp_company',
 ]
 
@@ -514,9 +514,9 @@ export default function Customers() {
             </thead>
             <tbody className="divide-y divide-gray-100">
               {loading ? (
-                <tr><td colSpan={7} className="text-center py-8 text-gray-400">불러오는 중...</td></tr>
+                <tr><td colSpan={8} className="text-center py-8 text-gray-400">불러오는 중...</td></tr>
               ) : paged.length === 0 ? (
-                <tr><td colSpan={7} className="text-center py-8 text-gray-400">데이터가 없습니다</td></tr>
+                <tr><td colSpan={8} className="text-center py-8 text-gray-400">데이터가 없습니다</td></tr>
               ) : (
                 paged.map((c) => (
                   <tr key={c.id} className="hover:bg-gray-50">
@@ -527,6 +527,16 @@ export default function Customers() {
                             className="text-emerald-600 font-medium hover:underline">
                             {(c as any)[col] || '-'}
                           </button>
+                        ) : col === 'business_number' && (c as any)[col] ? (
+                          <a
+                            href={`https://bizno.net/?query=${encodeURIComponent(c.customer_name)}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-blue-600 hover:underline"
+                            title="사업자번호 조회 (bizno.net)"
+                          >
+                            {(c as any)[col]}
+                          </a>
                         ) : col === 'opening_status' ? (
                           <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${statusBadge((c as any)[col])}`}>
                             {(c as any)[col] || '-'}
