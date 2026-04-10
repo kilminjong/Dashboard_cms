@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../hooks/useAuth'
-import { Send, Bot, User, Trash2, Sparkles, Plus, MessageSquare, HelpCircle, Menu, ChevronDown, ChevronRight, Edit2, X, Save, Search } from 'lucide-react'
+import { Send, Bot, User, Trash2, Sparkles, Plus, MessageSquare, HelpCircle, Menu, ChevronDown, ChevronRight, Edit2, X, Save, Search, Upload, Image } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 
@@ -56,6 +56,8 @@ export default function AiAssistant() {
   const [showFaqForm, setShowFaqForm] = useState(false)
   const [editingFaq, setEditingFaq] = useState<FaqItem | null>(null)
   const [faqForm, setFaqForm] = useState({ category: '', question: '', answer: '', images: '' })
+  const [uploadingImage, setUploadingImage] = useState(false)
+  const faqImageInputRef = useRef<HTMLInputElement>(null)
   const [faqCategories, setFaqCategories] = useState<string[]>([])
   const [faqSearch, setFaqSearch] = useState('')
 
@@ -153,6 +155,36 @@ export default function AiAssistant() {
     }
     setShowFaqForm(false)
     loadFaqs()
+  }
+
+  const handleFaqImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files
+    if (!files || files.length === 0) return
+    setUploadingImage(true)
+
+    const newPaths: string[] = []
+    for (const file of Array.from(files)) {
+      // 파일명을 영문+타임스탬프로 변환
+      const ext = file.name.split('.').pop()?.toLowerCase() || 'png'
+      const safeName = `faq_${Date.now()}_${Math.random().toString(36).slice(2, 8)}.${ext}`
+      const path = `faq/${safeName}`
+
+      const { error } = await supabase.storage.from('faq').upload(safeName, file, { cacheControl: '3600', upsert: false })
+      if (error) {
+        alert(`이미지 업로드 실패: ${error.message}`)
+      } else {
+        newPaths.push(path)
+      }
+    }
+
+    if (newPaths.length > 0) {
+      const current = faqForm.images.trim()
+      const updated = current ? current + '\n' + newPaths.join('\n') : newPaths.join('\n')
+      setFaqForm({ ...faqForm, images: updated })
+    }
+
+    setUploadingImage(false)
+    if (faqImageInputRef.current) faqImageInputRef.current.value = ''
   }
 
   const deleteFaq = async (id: string) => {
@@ -658,10 +690,37 @@ export default function AiAssistant() {
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 outline-none resize-none font-mono" placeholder="답변 내용을 입력하세요 (마크다운 형식 지원)" />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">첨부 이미지 <span className="text-xs text-gray-400 font-normal">(선택, 한 줄에 하나씩)</span></label>
-                <textarea value={faqForm.images} onChange={(e) => setFaqForm({ ...faqForm, images: e.target.value })} rows={2}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 outline-none resize-none" placeholder="이미지 경로 (예: faq/azure-sql-error.png)&#10;Supabase Storage 경로 또는 https:// URL" />
-                <p className="text-xs text-gray-400 mt-1">Supabase Storage에 업로드한 이미지 경로 또는 외부 이미지 URL을 입력하세요.</p>
+                <label className="block text-sm font-medium text-gray-700 mb-1">첨부 이미지 <span className="text-xs text-gray-400 font-normal">(선택)</span></label>
+                <div className="flex gap-2 mb-2">
+                  <label className={`flex items-center gap-1.5 px-3 py-2 border border-blue-200 bg-blue-50 text-blue-700 rounded-lg text-sm cursor-pointer hover:bg-blue-100 transition ${uploadingImage ? 'opacity-50 pointer-events-none' : ''}`}>
+                    <Upload size={15} />
+                    {uploadingImage ? '업로드 중...' : '이미지 업로드'}
+                    <input ref={faqImageInputRef} type="file" accept="image/*" multiple onChange={handleFaqImageUpload} className="hidden" />
+                  </label>
+                </div>
+                {/* 업로드된 이미지 미리보기 */}
+                {faqForm.images.trim() && (
+                  <div className="space-y-2">
+                    {faqForm.images.split('\n').filter(Boolean).map((img, idx) => {
+                      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
+                      const imageUrl = img.startsWith('http') ? img : `${supabaseUrl}/storage/v1/object/public/${img}`
+                      return (
+                        <div key={idx} className="flex items-center gap-2 bg-gray-50 rounded-lg p-2 border border-gray-100">
+                          <Image size={14} className="text-gray-400 shrink-0" />
+                          <img src={imageUrl} alt="" className="w-16 h-12 object-cover rounded" />
+                          <span className="text-xs text-gray-500 truncate flex-1">{img.split('/').pop()}</span>
+                          <button onClick={() => {
+                            const lines = faqForm.images.split('\n').filter(Boolean)
+                            lines.splice(idx, 1)
+                            setFaqForm({ ...faqForm, images: lines.join('\n') })
+                          }} className="p-1 text-gray-300 hover:text-red-500 transition shrink-0">
+                            <X size={14} />
+                          </button>
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
               </div>
             </div>
 
