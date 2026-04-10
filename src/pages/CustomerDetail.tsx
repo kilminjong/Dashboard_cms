@@ -538,6 +538,88 @@ export default function CustomerDetail() {
           )}
         </div>
       )}
+
+      {/* 전체 현황 한눈에 보기 */}
+      {customer && !editing && (
+        <div className="mt-6 space-y-4">
+          <h3 className="text-sm font-semibold text-gray-500">전체 현황 한눈에 보기</h3>
+
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            {/* 고객정보 */}
+            <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+              <div className="bg-blue-50 px-4 py-2 border-b border-blue-100">
+                <span className="text-sm font-semibold text-blue-700">고객정보</span>
+              </div>
+              <div className="grid grid-cols-2 text-xs">
+                {[
+                  ['고객명', form.customer_name],
+                  ['사업자번호', form.business_number],
+                  ['고객번호', form.customer_number],
+                  ['관리코드', form.management_code],
+                  ['구축구분', form.build_type],
+                  ['관리구분', form.management_type],
+                  ['구축형', form.construction_type],
+                  ['담당자', form.manager],
+                  ['접수일', form.reception_date],
+                  ['개설상태', form.opening_status],
+                  ['개설일', form.opening_date],
+                  ['연계상태', form.connection_status],
+                  ['연계일자', form.connection_date],
+                  ['민감고객', form.sensitive_customer],
+                  ['친밀도', form.intimacy],
+                ].map(([label, val]) => (
+                  <div key={label} className="flex border-b border-gray-50 last:border-0">
+                    <span className="bg-gray-50 px-3 py-2 w-24 shrink-0 font-medium text-gray-500 border-r border-gray-100">{label}</span>
+                    <span className="px-3 py-2 text-gray-800 truncate">{val || '-'}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* 서버/ERP 정보 */}
+            <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+              <div className="bg-purple-50 px-4 py-2 border-b border-purple-100">
+                <span className="text-sm font-semibold text-purple-700">서버/ERP 정보</span>
+              </div>
+              <div className="grid grid-cols-1 text-xs">
+                {[
+                  ['ERP회사', form.erp_company],
+                  ['ERP 종류', form.erp_type],
+                  ['ERP DB', form.erp_db],
+                  ['연계방식', form.connection_method],
+                  ['서버위치', form.server_location],
+                  ['스케줄사용', form.schedule_use],
+                  ['고객사 IP', form.customer_ip],
+                ].map(([label, val]) => (
+                  <div key={label} className="flex border-b border-gray-50 last:border-0">
+                    <span className="bg-gray-50 px-3 py-2 w-28 shrink-0 font-medium text-gray-500 border-r border-gray-100">{label}</span>
+                    <span className="px-3 py-2 text-gray-800">{val || '-'}</span>
+                  </div>
+                ))}
+              </div>
+
+              {/* 담당자 정보 */}
+              <div className="bg-amber-50 px-4 py-2 border-t border-b border-amber-100">
+                <span className="text-sm font-semibold text-amber-700">담당자 정보</span>
+              </div>
+              <div className="grid grid-cols-1 text-xs">
+                {[
+                  ['담당자', form.manager],
+                  ['고객담당자', form.customer_contact_person],
+                  ['담당부서', form.customer_department],
+                  ['연락처', form.contact_phone],
+                  ['이메일', form.contact_email],
+                ].map(([label, val]) => (
+                  <div key={label} className="flex border-b border-gray-50 last:border-0">
+                    <span className="bg-gray-50 px-3 py-2 w-28 shrink-0 font-medium text-gray-500 border-r border-gray-100">{label}</span>
+                    <span className="px-3 py-2 text-gray-800">{val || '-'}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
