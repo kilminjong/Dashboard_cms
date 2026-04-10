@@ -24,6 +24,7 @@ interface FaqItem {
   question: string
   answer: string
   sort_order: number
+  images?: string[]
 }
 
 const QUICK_PROMPTS = [
@@ -54,7 +55,7 @@ export default function AiAssistant() {
   const [expandedFaqId, setExpandedFaqId] = useState<string | null>(null)
   const [showFaqForm, setShowFaqForm] = useState(false)
   const [editingFaq, setEditingFaq] = useState<FaqItem | null>(null)
-  const [faqForm, setFaqForm] = useState({ category: '', question: '', answer: '' })
+  const [faqForm, setFaqForm] = useState({ category: '', question: '', answer: '', images: '' })
   const [faqCategories, setFaqCategories] = useState<string[]>([])
   const [faqSearch, setFaqSearch] = useState('')
 
@@ -117,10 +118,10 @@ export default function AiAssistant() {
   const openFaqForm = (faq?: FaqItem) => {
     if (faq) {
       setEditingFaq(faq)
-      setFaqForm({ category: faq.category, question: faq.question, answer: faq.answer })
+      setFaqForm({ category: faq.category, question: faq.question, answer: faq.answer, images: (faq.images || []).join('\n') })
     } else {
       setEditingFaq(null)
-      setFaqForm({ category: '', question: '', answer: '' })
+      setFaqForm({ category: '', question: '', answer: '', images: '' })
     }
     setShowFaqForm(true)
   }
@@ -131,11 +132,13 @@ export default function AiAssistant() {
       return
     }
     const { data: { user } } = await supabase.auth.getUser()
+    const imageList = faqForm.images.split('\n').map((s) => s.trim()).filter(Boolean)
     if (editingFaq) {
       await supabase.from('faqs').update({
         category: faqForm.category.trim(),
         question: faqForm.question.trim(),
         answer: faqForm.answer.trim(),
+        images: imageList,
         updated_at: new Date().toISOString(),
       }).eq('id', editingFaq.id)
     } else {
@@ -143,6 +146,7 @@ export default function AiAssistant() {
         category: faqForm.category.trim(),
         question: faqForm.question.trim(),
         answer: faqForm.answer.trim(),
+        images: imageList,
         sort_order: faqs.length + 1,
         created_by: user?.id,
       }])
@@ -566,8 +570,28 @@ export default function AiAssistant() {
                                 {isExpanded && (
                                   <div className="px-5 pb-4 border-t border-gray-50">
                                     <div className="bg-emerald-50/50 rounded-lg p-4 mt-3">
-                                      <p className="text-sm text-gray-700 leading-relaxed whitespace-pre-wrap">{faq.answer}</p>
+                                      <div className="text-sm text-gray-700 leading-relaxed markdown-body">
+                                        <ReactMarkdown remarkPlugins={[remarkGfm]} components={{
+                                          ...mdComponents,
+                                          a: ({ href, children }: any) => <a href={href} target="_blank" rel="noopener noreferrer" className="text-emerald-600 underline hover:text-emerald-700 break-all">{children}</a>,
+                                        }}>{faq.answer}</ReactMarkdown>
+                                      </div>
                                     </div>
+                                    {/* FAQ 이미지 */}
+                                    {faq.images && faq.images.length > 0 && (
+                                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-3">
+                                        {faq.images.map((img, idx) => {
+                                          const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
+                                          const imageUrl = img.startsWith('http') ? img : `${supabaseUrl}/storage/v1/object/public/${img}`
+                                          return (
+                                            <a key={idx} href={imageUrl} target="_blank" rel="noopener noreferrer"
+                                              className="block border border-gray-200 rounded-lg overflow-hidden hover:shadow-md transition">
+                                              <img src={imageUrl} alt={`FAQ 이미지 ${idx + 1}`} className="w-full h-auto" loading="lazy" />
+                                            </a>
+                                          )
+                                        })}
+                                      </div>
+                                    )}
                                     <div className="flex justify-end gap-2 mt-3">
                                       <button onClick={() => openFaqForm(faq)} className="flex items-center gap-1 text-xs text-gray-400 hover:text-blue-500 transition">
                                         <Edit2 size={12} /> 수정
@@ -629,9 +653,15 @@ export default function AiAssistant() {
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 outline-none" placeholder="자주 묻는 질문을 입력하세요" />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">답변 *</label>
-                <textarea value={faqForm.answer} onChange={(e) => setFaqForm({ ...faqForm, answer: e.target.value })} rows={5}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 outline-none resize-none" placeholder="답변 내용을 입력하세요" />
+                <label className="block text-sm font-medium text-gray-700 mb-1">답변 * <span className="text-xs text-gray-400 font-normal">(마크다운 지원)</span></label>
+                <textarea value={faqForm.answer} onChange={(e) => setFaqForm({ ...faqForm, answer: e.target.value })} rows={7}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 outline-none resize-none font-mono" placeholder="답변 내용을 입력하세요 (마크다운 형식 지원)" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">첨부 이미지 <span className="text-xs text-gray-400 font-normal">(선택, 한 줄에 하나씩)</span></label>
+                <textarea value={faqForm.images} onChange={(e) => setFaqForm({ ...faqForm, images: e.target.value })} rows={2}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 outline-none resize-none" placeholder="이미지 경로 (예: faq/azure-sql-error.png)&#10;Supabase Storage 경로 또는 https:// URL" />
+                <p className="text-xs text-gray-400 mt-1">Supabase Storage에 업로드한 이미지 경로 또는 외부 이미지 URL을 입력하세요.</p>
               </div>
             </div>
 
