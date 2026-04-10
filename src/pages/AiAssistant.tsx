@@ -464,10 +464,10 @@ export default function AiAssistant() {
                       <Bot size={16} className="text-emerald-600" />
                     </div>
                   )}
-                  <div className={`max-w-[90%] sm:max-w-[80%] ${
+                  <div className={`${
                     msg.role === 'user'
-                      ? 'bg-emerald-600 text-white rounded-2xl rounded-tr-md'
-                      : 'bg-white text-gray-800 rounded-2xl rounded-tl-md border border-gray-100 shadow-sm'
+                      ? 'max-w-[85%] sm:max-w-[70%] bg-emerald-600 text-white rounded-2xl rounded-tr-md'
+                      : 'max-w-full w-full bg-white text-gray-800 rounded-2xl rounded-tl-md border border-gray-100 shadow-sm'
                   } px-4 py-3`}>
                     {msg.role === 'assistant' ? (
                       <div className="markdown-body text-sm leading-relaxed">
