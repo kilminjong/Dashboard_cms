@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../hooks/useAuth'
-import { Send, Bot, User, Trash2, Sparkles, Plus, MessageSquare, HelpCircle, Menu, ChevronDown, ChevronRight, Edit2, X, Save, Search, Upload, Image } from 'lucide-react'
+import { Send, Bot, User, Trash2, Sparkles, Plus, MessageSquare, HelpCircle, Menu, ChevronDown, ChevronRight, Edit2, X, Save, Search, Image } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 
@@ -58,6 +58,7 @@ export default function AiAssistant() {
   const [faqForm, setFaqForm] = useState({ category: '', question: '', answer: '', images: '' })
   const [uploadingImage, setUploadingImage] = useState(false)
   const faqImageInputRef = useRef<HTMLInputElement>(null)
+  const faqAnswerRef = useRef<HTMLTextAreaElement>(null)
   const [faqCategories, setFaqCategories] = useState<string[]>([])
   const [faqSearch, setFaqSearch] = useState('')
 
@@ -162,25 +163,34 @@ export default function AiAssistant() {
     if (!files || files.length === 0) return
     setUploadingImage(true)
 
-    const newPaths: string[] = []
+    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
+    const insertedTags: string[] = []
+
     for (const file of Array.from(files)) {
-      // 파일명을 영문+타임스탬프로 변환
       const ext = file.name.split('.').pop()?.toLowerCase() || 'png'
       const safeName = `faq_${Date.now()}_${Math.random().toString(36).slice(2, 8)}.${ext}`
-      const path = `faq/${safeName}`
 
       const { error } = await supabase.storage.from('faq').upload(safeName, file, { cacheControl: '3600', upsert: false })
       if (error) {
         alert(`이미지 업로드 실패: ${error.message}`)
       } else {
-        newPaths.push(path)
+        const imageUrl = `${supabaseUrl}/storage/v1/object/public/faq/${safeName}`
+        insertedTags.push(`\n![이미지](${imageUrl})\n`)
       }
     }
 
-    if (newPaths.length > 0) {
-      const current = faqForm.images.trim()
-      const updated = current ? current + '\n' + newPaths.join('\n') : newPaths.join('\n')
-      setFaqForm({ ...faqForm, images: updated })
+    if (insertedTags.length > 0) {
+      // 답변 텍스트의 커서 위치에 이미지 삽입
+      const textarea = faqAnswerRef.current
+      const tag = insertedTags.join('')
+      if (textarea) {
+        const start = textarea.selectionStart || faqForm.answer.length
+        const before = faqForm.answer.substring(0, start)
+        const after = faqForm.answer.substring(start)
+        setFaqForm({ ...faqForm, answer: before + tag + after })
+      } else {
+        setFaqForm({ ...faqForm, answer: faqForm.answer + tag })
+      }
     }
 
     setUploadingImage(false)
@@ -605,25 +615,15 @@ export default function AiAssistant() {
                                       <div className="text-sm text-gray-700 leading-relaxed markdown-body">
                                         <ReactMarkdown remarkPlugins={[remarkGfm]} components={{
                                           ...mdComponents,
+                                          img: ({ src, alt }: any) => (
+                                            <a href={src} target="_blank" rel="noopener noreferrer" className="block my-3 border border-gray-200 rounded-lg overflow-hidden hover:shadow-md transition max-w-lg">
+                                              <img src={src} alt={alt || 'FAQ 이미지'} className="w-full h-auto" loading="lazy" />
+                                            </a>
+                                          ),
                                           a: ({ href, children }: any) => <a href={href} target="_blank" rel="noopener noreferrer" className="text-emerald-600 underline hover:text-emerald-700 break-all">{children}</a>,
                                         }}>{faq.answer}</ReactMarkdown>
                                       </div>
                                     </div>
-                                    {/* FAQ 이미지 */}
-                                    {faq.images && faq.images.length > 0 && (
-                                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-3">
-                                        {faq.images.map((img, idx) => {
-                                          const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
-                                          const imageUrl = img.startsWith('http') ? img : `${supabaseUrl}/storage/v1/object/public/${img}`
-                                          return (
-                                            <a key={idx} href={imageUrl} target="_blank" rel="noopener noreferrer"
-                                              className="block border border-gray-200 rounded-lg overflow-hidden hover:shadow-md transition">
-                                              <img src={imageUrl} alt={`FAQ 이미지 ${idx + 1}`} className="w-full h-auto" loading="lazy" />
-                                            </a>
-                                          )
-                                        })}
-                                      </div>
-                                    )}
                                     <div className="flex justify-end gap-2 mt-3">
                                       <button onClick={() => openFaqForm(faq)} className="flex items-center gap-1 text-xs text-gray-400 hover:text-blue-500 transition">
                                         <Edit2 size={12} /> 수정
@@ -651,82 +651,66 @@ export default function AiAssistant() {
       {/* FAQ 등록/수정 모달 */}
       {showFaqForm && (
         <div className="fixed inset-0 bg-black/50 z-[60] flex items-center justify-center p-4" onClick={() => setShowFaqForm(false)}>
-          <div className="bg-white rounded-2xl w-full max-w-lg p-6" onClick={(e) => e.stopPropagation()}>
-            <div className="flex items-center justify-between mb-5">
-              <h3 className="font-bold text-gray-800">{editingFaq ? 'FAQ 수정' : 'FAQ 등록'}</h3>
-              <button onClick={() => setShowFaqForm(false)} className="p-1 text-gray-400 hover:text-gray-600"><X size={18} /></button>
+          <div className="bg-white rounded-2xl w-full max-w-3xl max-h-[90vh] overflow-y-auto p-6 sm:p-8" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-6">
+              <h3 className="text-lg font-bold text-gray-800">{editingFaq ? 'FAQ 수정' : 'FAQ 등록'}</h3>
+              <button onClick={() => setShowFaqForm(false)} className="p-1 text-gray-400 hover:text-gray-600"><X size={20} /></button>
             </div>
 
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">카테고리 *</label>
-                <div className="flex gap-2">
-                  <select
-                    value={faqCategories.includes(faqForm.category) ? faqForm.category : faqForm.category ? '__custom' : ''}
-                    onChange={(e) => {
-                      if (e.target.value === '__custom') setFaqForm({ ...faqForm, category: '' })
-                      else setFaqForm({ ...faqForm, category: e.target.value })
-                    }}
-                    className="px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white focus:ring-2 focus:ring-emerald-500 outline-none"
-                  >
-                    <option value="">선택</option>
-                    {faqCategories.map((c) => <option key={c} value={c}>{c}</option>)}
-                    <option value="__custom">직접 입력</option>
-                  </select>
-                  {(!faqCategories.includes(faqForm.category)) && (
-                    <input type="text" value={faqForm.category} onChange={(e) => setFaqForm({ ...faqForm, category: e.target.value })}
-                      className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 outline-none" placeholder="새 카테고리명" />
-                  )}
+            <div className="space-y-5">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">카테고리 *</label>
+                  <div className="flex gap-2">
+                    <select
+                      value={faqCategories.includes(faqForm.category) ? faqForm.category : faqForm.category ? '__custom' : ''}
+                      onChange={(e) => {
+                        if (e.target.value === '__custom') setFaqForm({ ...faqForm, category: '' })
+                        else setFaqForm({ ...faqForm, category: e.target.value })
+                      }}
+                      className="flex-1 px-3 py-2.5 border border-gray-300 rounded-lg text-sm bg-white focus:ring-2 focus:ring-emerald-500 outline-none"
+                    >
+                      <option value="">카테고리 선택</option>
+                      {faqCategories.map((c) => <option key={c} value={c}>{c}</option>)}
+                      <option value="__custom">직접 입력</option>
+                    </select>
+                    {(!faqCategories.includes(faqForm.category)) && (
+                      <input type="text" value={faqForm.category} onChange={(e) => setFaqForm({ ...faqForm, category: e.target.value })}
+                        className="flex-1 px-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 outline-none" placeholder="새 카테고리명" />
+                    )}
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">질문 *</label>
+                  <input type="text" value={faqForm.question} onChange={(e) => setFaqForm({ ...faqForm, question: e.target.value })}
+                    className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 outline-none" placeholder="FAQ 제목 / 질문을 입력하세요" />
                 </div>
               </div>
+
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">질문 *</label>
-                <input type="text" value={faqForm.question} onChange={(e) => setFaqForm({ ...faqForm, question: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 outline-none" placeholder="자주 묻는 질문을 입력하세요" />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">답변 * <span className="text-xs text-gray-400 font-normal">(마크다운 지원)</span></label>
-                <textarea value={faqForm.answer} onChange={(e) => setFaqForm({ ...faqForm, answer: e.target.value })} rows={7}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 outline-none resize-none font-mono" placeholder="답변 내용을 입력하세요 (마크다운 형식 지원)" />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">첨부 이미지 <span className="text-xs text-gray-400 font-normal">(선택)</span></label>
-                <div className="flex gap-2 mb-2">
-                  <label className={`flex items-center gap-1.5 px-3 py-2 border border-blue-200 bg-blue-50 text-blue-700 rounded-lg text-sm cursor-pointer hover:bg-blue-100 transition ${uploadingImage ? 'opacity-50 pointer-events-none' : ''}`}>
-                    <Upload size={15} />
-                    {uploadingImage ? '업로드 중...' : '이미지 업로드'}
+                <div className="flex items-center justify-between mb-1">
+                  <label className="text-sm font-medium text-gray-700">답변 * <span className="text-xs text-gray-400 font-normal">(마크다운 지원)</span></label>
+                  <label className={`flex items-center gap-1.5 px-2.5 py-1.5 border border-blue-200 bg-blue-50 text-blue-700 rounded-lg text-xs cursor-pointer hover:bg-blue-100 transition ${uploadingImage ? 'opacity-50 pointer-events-none' : ''}`}>
+                    <Image size={13} />
+                    {uploadingImage ? '업로드 중...' : '이미지 삽입'}
                     <input ref={faqImageInputRef} type="file" accept="image/*" multiple onChange={handleFaqImageUpload} className="hidden" />
                   </label>
                 </div>
-                {/* 업로드된 이미지 미리보기 */}
-                {faqForm.images.trim() && (
-                  <div className="space-y-2">
-                    {faqForm.images.split('\n').filter(Boolean).map((img, idx) => {
-                      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
-                      const imageUrl = img.startsWith('http') ? img : `${supabaseUrl}/storage/v1/object/public/${img}`
-                      return (
-                        <div key={idx} className="flex items-center gap-2 bg-gray-50 rounded-lg p-2 border border-gray-100">
-                          <Image size={14} className="text-gray-400 shrink-0" />
-                          <img src={imageUrl} alt="" className="w-16 h-12 object-cover rounded" />
-                          <span className="text-xs text-gray-500 truncate flex-1">{img.split('/').pop()}</span>
-                          <button onClick={() => {
-                            const lines = faqForm.images.split('\n').filter(Boolean)
-                            lines.splice(idx, 1)
-                            setFaqForm({ ...faqForm, images: lines.join('\n') })
-                          }} className="p-1 text-gray-300 hover:text-red-500 transition shrink-0">
-                            <X size={14} />
-                          </button>
-                        </div>
-                      )
-                    })}
-                  </div>
-                )}
+                <textarea
+                  ref={faqAnswerRef}
+                  value={faqForm.answer}
+                  onChange={(e) => setFaqForm({ ...faqForm, answer: e.target.value })}
+                  rows={15}
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 outline-none resize-y font-mono leading-relaxed"
+                  placeholder={"답변 내용을 입력하세요 (마크다운 형식 지원)\n\n예시:\n## 증상\n오류가 발생합니다.\n\n## 해결 방법\n1. 첫 번째 단계\n2. 두 번째 단계\n\n이미지는 커서 위치에 삽입됩니다."}
+                />
+                <p className="text-xs text-gray-400 mt-1">"이미지 삽입" 버튼을 누르면 답변 내 커서 위치에 이미지가 삽입됩니다. 위치를 바꾸려면 텍스트에서 ![이미지](...) 부분을 이동하세요.</p>
               </div>
             </div>
 
-            <div className="flex gap-3 mt-5">
-              <button onClick={() => setShowFaqForm(false)} className="flex-1 py-2.5 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition text-sm">취소</button>
-              <button onClick={saveFaq} className="flex-1 py-2.5 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition text-sm flex items-center justify-center gap-1.5">
+            <div className="flex gap-3 mt-6">
+              <button onClick={() => setShowFaqForm(false)} className="flex-1 py-2.5 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition text-sm font-medium">취소</button>
+              <button onClick={saveFaq} className="flex-1 py-2.5 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition text-sm font-medium flex items-center justify-center gap-1.5">
                 <Save size={15} /> {editingFaq ? '수정' : '등록'}
               </button>
             </div>
