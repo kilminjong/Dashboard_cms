@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../hooks/useAuth'
-import { Send, Bot, User, Trash2, Sparkles, Plus, MessageSquare, HelpCircle, Menu, ChevronDown, ChevronRight, Edit2, X, Save } from 'lucide-react'
+import { Send, Bot, User, Trash2, Sparkles, Plus, MessageSquare, HelpCircle, Menu, ChevronDown, ChevronRight, Edit2, X, Save, Search } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 
@@ -56,6 +56,7 @@ export default function AiAssistant() {
   const [editingFaq, setEditingFaq] = useState<FaqItem | null>(null)
   const [faqForm, setFaqForm] = useState({ category: '', question: '', answer: '' })
   const [faqCategories, setFaqCategories] = useState<string[]>([])
+  const [faqSearch, setFaqSearch] = useState('')
 
   useEffect(() => {
     loadConversations()
@@ -447,11 +448,11 @@ export default function AiAssistant() {
         {activeTab === 'faq' && (
           <div className="flex-1 overflow-y-auto bg-gray-50/50">
             <div className="max-w-3xl mx-auto p-4 sm:p-6">
-              {/* FAQ 헤더 */}
-              <div className="flex items-center justify-between mb-6">
+              {/* FAQ 헤더 + 검색 */}
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-5">
                 <div>
                   <h3 className="text-lg font-bold text-gray-800">자주 묻는 질문</h3>
-                  <p className="text-sm text-gray-400 mt-0.5">궁금한 항목을 선택하면 답변을 확인할 수 있습니다.</p>
+                  <p className="text-sm text-gray-400 mt-0.5">키워드로 검색하거나 항목을 선택하세요.</p>
                 </div>
                 <button onClick={() => openFaqForm()}
                   className="flex items-center gap-1.5 px-3 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition text-sm shrink-0">
@@ -459,57 +460,133 @@ export default function AiAssistant() {
                 </button>
               </div>
 
-              {/* 카테고리별 FAQ */}
-              {faqCategories.length === 0 ? (
-                <div className="text-center py-16">
-                  <HelpCircle size={40} className="text-gray-200 mx-auto mb-3" />
-                  <p className="text-gray-400">등록된 FAQ가 없습니다.</p>
-                  <button onClick={() => openFaqForm()} className="text-emerald-600 text-sm mt-2 hover:underline">첫 FAQ를 등록해보세요</button>
-                </div>
-              ) : (
-                <div className="space-y-6">
-                  {faqCategories.map((cat) => (
-                    <div key={cat}>
-                      <div className="flex items-center gap-2 mb-3">
-                        <div className="w-1 h-5 bg-emerald-500 rounded-full"></div>
-                        <h4 className="text-sm font-bold text-gray-700">{cat}</h4>
-                        <span className="text-xs text-gray-400">{faqs.filter((f) => f.category === cat).length}건</span>
-                      </div>
-                      <div className="space-y-2">
-                        {faqs.filter((f) => f.category === cat).map((faq) => (
-                          <div key={faq.id} className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
-                            <button
-                              onClick={() => setExpandedFaqId(expandedFaqId === faq.id ? null : faq.id)}
-                              className="w-full flex items-center justify-between px-5 py-4 text-left hover:bg-gray-50 transition"
-                            >
-                              <span className="text-sm font-medium text-gray-800 pr-4">{faq.question}</span>
-                              {expandedFaqId === faq.id
-                                ? <ChevronDown size={16} className="text-emerald-500 shrink-0" />
-                                : <ChevronRight size={16} className="text-gray-300 shrink-0" />
-                              }
-                            </button>
-                            {expandedFaqId === faq.id && (
-                              <div className="px-5 pb-4 border-t border-gray-50">
-                                <div className="bg-emerald-50/50 rounded-lg p-4 mt-3">
-                                  <p className="text-sm text-gray-700 leading-relaxed whitespace-pre-wrap">{faq.answer}</p>
-                                </div>
-                                <div className="flex justify-end gap-2 mt-3">
-                                  <button onClick={() => openFaqForm(faq)} className="flex items-center gap-1 text-xs text-gray-400 hover:text-blue-500 transition">
-                                    <Edit2 size={12} /> 수정
-                                  </button>
-                                  <button onClick={() => deleteFaq(faq.id)} className="flex items-center gap-1 text-xs text-gray-400 hover:text-red-500 transition">
-                                    <Trash2 size={12} /> 삭제
-                                  </button>
-                                </div>
-                              </div>
-                            )}
-                          </div>
-                        ))}
-                      </div>
+              {/* 검색바 */}
+              <div className="relative mb-5">
+                <Search size={18} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400" />
+                <input
+                  type="text"
+                  value={faqSearch}
+                  onChange={(e) => { setFaqSearch(e.target.value); setExpandedFaqId(null) }}
+                  placeholder="검색어를 입력하세요 (예: 티베로, 오류, 설치방법)"
+                  className="w-full pl-10 pr-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-transparent outline-none text-sm bg-white shadow-sm"
+                />
+                {faqSearch && (
+                  <button onClick={() => setFaqSearch('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-300 hover:text-gray-500">
+                    <X size={16} />
+                  </button>
+                )}
+              </div>
+
+              {(() => {
+                // 검색 필터링: 질문, 답변, 카테고리 모두에서 키워드 매칭
+                const query = faqSearch.trim().toLowerCase()
+                const keywords = query.split(/\s+/).filter(Boolean)
+
+                const filteredFaqs = query
+                  ? faqs.filter((f) =>
+                      keywords.some((kw) =>
+                        f.question.toLowerCase().includes(kw) ||
+                        f.answer.toLowerCase().includes(kw) ||
+                        f.category.toLowerCase().includes(kw)
+                      )
+                    )
+                  : faqs
+
+                const filteredCategories = [...new Set(filteredFaqs.map((f) => f.category))]
+
+                if (filteredFaqs.length === 0 && query) {
+                  return (
+                    <div className="text-center py-12">
+                      <Search size={36} className="text-gray-200 mx-auto mb-3" />
+                      <p className="text-gray-400 text-sm">"{faqSearch}"에 대한 검색 결과가 없습니다.</p>
+                      <p className="text-gray-300 text-xs mt-1">다른 키워드로 검색하거나 FAQ를 등록해보세요.</p>
                     </div>
-                  ))}
-                </div>
-              )}
+                  )
+                }
+
+                if (filteredFaqs.length === 0) {
+                  return (
+                    <div className="text-center py-16">
+                      <HelpCircle size={40} className="text-gray-200 mx-auto mb-3" />
+                      <p className="text-gray-400">등록된 FAQ가 없습니다.</p>
+                      <button onClick={() => openFaqForm()} className="text-emerald-600 text-sm mt-2 hover:underline">첫 FAQ를 등록해보세요</button>
+                    </div>
+                  )
+                }
+
+                return (
+                  <div className="space-y-5">
+                    {query && (
+                      <p className="text-xs text-gray-400">검색 결과: <strong className="text-gray-600">{filteredFaqs.length}건</strong></p>
+                    )}
+                    {filteredCategories.map((cat) => (
+                      <div key={cat}>
+                        <div className="flex items-center gap-2 mb-3">
+                          <div className="w-1 h-5 bg-emerald-500 rounded-full"></div>
+                          <h4 className="text-sm font-bold text-gray-700">{cat}</h4>
+                          <span className="text-xs text-gray-400">{filteredFaqs.filter((f) => f.category === cat).length}건</span>
+                        </div>
+                        <div className="space-y-2">
+                          {filteredFaqs.filter((f) => f.category === cat).map((faq) => {
+                            // 검색 키워드 하이라이트
+                            const highlightText = (text: string) => {
+                              if (!query) return text
+                              let result = text
+                              keywords.forEach((kw) => {
+                                const regex = new RegExp(`(${kw})`, 'gi')
+                                result = result.replace(regex, '|||$1|||')
+                              })
+                              return result
+                            }
+
+                            const questionParts = highlightText(faq.question).split('|||')
+                            const isExpanded = expandedFaqId === faq.id
+
+                            return (
+                              <div key={faq.id} className={`bg-white rounded-xl border shadow-sm overflow-hidden transition ${isExpanded ? 'border-emerald-200' : 'border-gray-100'}`}>
+                                <button
+                                  onClick={() => setExpandedFaqId(isExpanded ? null : faq.id)}
+                                  className="w-full flex items-center justify-between px-5 py-4 text-left hover:bg-gray-50 transition"
+                                >
+                                  <span className="text-sm font-medium text-gray-800 pr-4">
+                                    {questionParts.map((part, idx) =>
+                                      keywords.some((kw) => part.toLowerCase() === kw)
+                                        ? <mark key={idx} className="bg-yellow-100 text-yellow-800 px-0.5 rounded">{part}</mark>
+                                        : <span key={idx}>{part}</span>
+                                    )}
+                                  </span>
+                                  <div className="flex items-center gap-2 shrink-0">
+                                    <span className="text-xs text-gray-300">{faq.category}</span>
+                                    {isExpanded
+                                      ? <ChevronDown size={16} className="text-emerald-500" />
+                                      : <ChevronRight size={16} className="text-gray-300" />
+                                    }
+                                  </div>
+                                </button>
+                                {isExpanded && (
+                                  <div className="px-5 pb-4 border-t border-gray-50">
+                                    <div className="bg-emerald-50/50 rounded-lg p-4 mt-3">
+                                      <p className="text-sm text-gray-700 leading-relaxed whitespace-pre-wrap">{faq.answer}</p>
+                                    </div>
+                                    <div className="flex justify-end gap-2 mt-3">
+                                      <button onClick={() => openFaqForm(faq)} className="flex items-center gap-1 text-xs text-gray-400 hover:text-blue-500 transition">
+                                        <Edit2 size={12} /> 수정
+                                      </button>
+                                      <button onClick={() => deleteFaq(faq.id)} className="flex items-center gap-1 text-xs text-gray-400 hover:text-red-500 transition">
+                                        <Trash2 size={12} /> 삭제
+                                      </button>
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+                            )
+                          })}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )
+              })()}
             </div>
           </div>
         )}
