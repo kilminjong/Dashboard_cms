@@ -10,6 +10,9 @@ import Customers from './pages/Customers'
 import CustomerDetail from './pages/CustomerDetail'
 import AiAssistant from './pages/AiAssistant'
 import CalendarPage from './pages/Calendar'
+import Documents from './pages/Documents'
+import Reports from './pages/Reports'
+import CustomerSearch from './pages/CustomerSearch'
 import ProfilePage from './pages/Profile'
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
@@ -62,8 +65,11 @@ export default function App() {
           <Route path="/" element={<Dashboard />} />
           <Route path="/customers" element={<Customers />} />
           <Route path="/customers/:id" element={<CustomerDetail />} />
+          <Route path="/customers/detail-search" element={<CustomerSearch />} />
+          <Route path="/reports" element={<Reports />} />
           <Route path="/ai-assistant" element={<AiAssistant />} />
           <Route path="/calendar" element={<CalendarPage />} />
+          <Route path="/documents" element={<Documents />} />
           <Route path="/profile" element={<ProfilePage />} />
         </Route>
       </Routes>
