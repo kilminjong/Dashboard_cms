@@ -181,21 +181,48 @@ export default function AiAssistant() {
         .order('start_date')
         .limit(20)
 
-      // 필터링
-      const userMsgLower = msg.toLowerCase()
       const allCustomers = customers || []
-      let filteredCustomers = allCustomers
+      const userMsgLower = msg.toLowerCase()
 
-      if (userMsgLower.includes('개설 안') || userMsgLower.includes('미개설') || userMsgLower.includes('개설되지') || userMsgLower.includes('아직') || userMsgLower.includes('개설전')) {
+      // 월별 신규 접수 통계 (최근 12개월)
+      const now = new Date()
+      const monthlyStats: Record<string, number> = {}
+      for (let i = 0; i < 12; i++) {
+        const d = new Date(now.getFullYear(), now.getMonth() - i, 1)
+        const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+        monthlyStats[key] = allCustomers.filter((c) => c.reception_date?.startsWith(key)).length
+      }
+
+      // 담당자별 통계
+      const managerCounts: Record<string, number> = {}
+      allCustomers.forEach((c) => {
+        if (c.manager) managerCounts[c.manager] = (managerCounts[c.manager] || 0) + 1
+      })
+
+      // 필터링: 목록 요청이 명확할 때만 적용, 아니면 전체 전달
+      let filteredCustomers = allCustomers
+      let isFiltered = false
+
+      if (userMsgLower.includes('개설 안') || userMsgLower.includes('미개설') || userMsgLower.includes('개설되지') || userMsgLower.includes('개설전')) {
         filteredCustomers = allCustomers.filter((c) => c.opening_status !== '개설완료' && c.opening_status !== '이행완료')
+        isFiltered = true
       } else if (userMsgLower.includes('개설완료') || userMsgLower.includes('완료된')) {
         filteredCustomers = allCustomers.filter((c) => c.opening_status === '개설완료' || c.opening_status === '이행완료')
-      } else if (userMsgLower.includes('취소')) {
+        isFiltered = true
+      } else if (userMsgLower.includes('개설취소') || userMsgLower.includes('취소된')) {
         filteredCustomers = allCustomers.filter((c) => c.opening_status === '개설취소')
+        isFiltered = true
+      } else if (userMsgLower.includes('개설대기') || userMsgLower.includes('대기')) {
+        filteredCustomers = allCustomers.filter((c) => c.opening_status === '개설대기')
+        isFiltered = true
+      } else if (userMsgLower.includes('개설진행') || userMsgLower.includes('진행중')) {
+        filteredCustomers = allCustomers.filter((c) => c.opening_status === '개설진행')
+        isFiltered = true
       }
 
       if (userMsgLower.includes('내 담당') || userMsgLower.includes('내가 담당')) {
         filteredCustomers = filteredCustomers.filter((c) => c.manager === (profile?.name || ''))
+        isFiltered = true
       }
 
       const stats = {
@@ -206,6 +233,8 @@ export default function AiAssistant() {
         canceled: allCustomers.filter((c) => c.opening_status === '개설취소').length,
         thisMonthNew: allCustomers.filter((c) => c.reception_date?.startsWith(today.substring(0, 7))).length,
         myCustomers: allCustomers.filter((c) => c.manager === (profile?.name || '')).length,
+        monthlyStats,
+        managerCounts,
       }
 
       const chatHistory = newMessages.slice(-10).map((m) => ({ role: m.role, content: m.content }))
@@ -219,8 +248,9 @@ export default function AiAssistant() {
         },
         body: JSON.stringify({
           messages: chatHistory,
-          filteredCustomers: filteredCustomers.slice(0, 100),
-          filteredCount: filteredCustomers.length,
+          filteredCustomers: isFiltered ? filteredCustomers.slice(0, 100) : [],
+          filteredCount: isFiltered ? filteredCustomers.length : 0,
+          isFiltered,
           stats,
           scheduleData: schedules || [],
           managerName: profile?.name || '',
