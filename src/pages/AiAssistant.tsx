@@ -184,6 +184,10 @@ export default function AiAssistant() {
       const allCustomers = customers || []
       const userMsgLower = msg.toLowerCase()
 
+      // CMS 관련 질문인지 판별
+      const cmsKeywords = ['고객', '개설', '미개설', '담당', 'erp', '연계', '사업자', '접수', '신규', '취소', '진행', '대기', '완료', '이행', '인입', '등록', '몇명', '몇건', '현황', '목록', '리스트', '통계', '보여줘', '알려줘', '조회']
+      const isCmsQuery = cmsKeywords.some((kw) => userMsgLower.includes(kw))
+
       // 월별 신규 접수 통계 (최근 12개월)
       const now = new Date()
       const monthlyStats: Record<string, number> = {}
@@ -251,7 +255,8 @@ export default function AiAssistant() {
           filteredCustomers: isFiltered ? filteredCustomers.slice(0, 100) : [],
           filteredCount: isFiltered ? filteredCustomers.length : 0,
           isFiltered,
-          stats,
+          isCmsQuery,
+          stats: isCmsQuery ? stats : { total: allCustomers.length },
           scheduleData: schedules || [],
           managerName: profile?.name || '',
           date: today,
