@@ -16,6 +16,7 @@ import {
 import { useState } from 'react'
 import { useNotification } from '../../hooks/useNotification'
 import { useAutoBackup } from '../../hooks/useAutoBackup'
+import { useAuth } from '../../hooks/useAuth'
 
 const navItems = [
   { to: '/', icon: LayoutDashboard, label: '대시보드' },
@@ -35,6 +36,7 @@ const navItems = [
 export default function Layout() {
   const navigate = useNavigate()
   const location = useLocation()
+  const { profile } = useAuth()
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [expandedMenu, setExpandedMenu] = useState<string | null>(
     location.pathname.startsWith('/customers') ? '고객정보관리' : null
@@ -65,7 +67,7 @@ export default function Layout() {
 
       {/* 사이드바 */}
       <aside
-        className={`fixed lg:static inset-y-0 left-0 z-50 w-64 bg-gradient-to-b from-emerald-800 to-emerald-900 transform transition-transform duration-200 ease-in-out ${
+        className={`fixed lg:static inset-y-0 left-0 z-50 w-64 bg-gradient-to-b from-slate-800 to-slate-900 transform transition-transform duration-200 ease-in-out ${
           sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
         }`}
       >
@@ -73,7 +75,7 @@ export default function Layout() {
         <div className="flex items-center justify-between h-16 px-5">
           <div>
             <h1 className="text-base font-bold text-white tracking-tight">webcash</h1>
-            <p className="text-[10px] text-emerald-300 -mt-0.5">하나CMS팀</p>
+            <p className="text-[10px] text-slate-400 -mt-0.5">하나CMS팀</p>
           </div>
           <button className="lg:hidden p-1 text-emerald-300 hover:text-white" onClick={() => setSidebarOpen(false)}>
             <X size={20} />
@@ -91,7 +93,7 @@ export default function Layout() {
                   <button
                     onClick={() => toggleSubmenu(item.label)}
                     className={`w-full flex items-center justify-between px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
-                      isActive ? 'bg-emerald-700/50 text-white' : 'text-emerald-200 hover:bg-emerald-700/30 hover:text-white'
+                      isActive ? 'bg-slate-700/50 text-white' : 'text-slate-300 hover:bg-slate-700/40 hover:text-white'
                     }`}
                   >
                     <div className="flex items-center gap-3">
@@ -111,8 +113,8 @@ export default function Layout() {
                           className={({ isActive }) =>
                             `flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs font-medium transition-colors ${
                               isActive
-                                ? 'bg-emerald-600 text-white'
-                                : 'text-emerald-300 hover:bg-emerald-700/40 hover:text-white'
+                                ? 'bg-emerald-600 text-white shadow-sm'
+                                : 'text-slate-400 hover:bg-slate-700/40 hover:text-white'
                             }`
                           }
                         >
@@ -135,8 +137,8 @@ export default function Layout() {
                 className={({ isActive }) =>
                   `flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
                     isActive
-                      ? 'bg-emerald-600 text-white shadow-sm'
-                      : 'text-emerald-200 hover:bg-emerald-700/30 hover:text-white'
+                      ? 'bg-emerald-600 text-white shadow-sm shadow-sm'
+                      : 'text-slate-300 hover:bg-slate-700/40 hover:text-white'
                   }`
                 }
               >
@@ -148,12 +150,21 @@ export default function Layout() {
         </nav>
 
         {/* 로그아웃 */}
-        <div className="absolute bottom-0 left-0 right-0 p-3 border-t border-emerald-700/50">
+        <div className="absolute bottom-0 left-0 right-0 border-t border-slate-700/50">
+          <div className="px-4 py-3 flex items-center gap-3">
+            <div className="w-8 h-8 rounded-full bg-emerald-600 flex items-center justify-center text-white text-sm font-bold shrink-0">
+              {(profile?.name || '?')[0]}
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-medium text-white truncate">{profile?.name || '사용자'}</p>
+              <p className="text-xs text-slate-400 truncate">{profile?.email || ''}</p>
+            </div>
+          </div>
           <button
             onClick={handleLogout}
-            className="flex items-center gap-3 px-3 py-2.5 w-full rounded-lg text-sm font-medium text-emerald-300 hover:bg-red-500/20 hover:text-red-300 transition-colors"
+            className="flex items-center gap-3 px-4 py-2.5 w-full text-sm font-medium text-slate-400 hover:bg-red-500/20 hover:text-red-300 transition-colors"
           >
-            <LogOut size={18} />
+            <LogOut size={16} />
             로그아웃
           </button>
         </div>

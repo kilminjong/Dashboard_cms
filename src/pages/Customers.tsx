@@ -2,7 +2,7 @@ import { useEffect, useState, useRef, useMemo, Fragment } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import type { Customer } from '../types'
-import { Plus, Search, Edit2, Trash2, X, Upload, FileSpreadsheet, Filter, ChevronUp, ChevronDown, RotateCcw } from 'lucide-react'
+import { Plus, Search, Edit2, Trash2, X, Upload, FileSpreadsheet, ChevronUp, ChevronDown, RotateCcw } from 'lucide-react'
 import * as XLSX from 'xlsx'
 
 const CUSTOMER_FIELDS: { key: string; label: string; required?: boolean; type?: string; options?: string[] }[] = [
@@ -70,12 +70,15 @@ export default function Customers() {
   const [searchParams] = useSearchParams()
   const urlStatus = searchParams.get('status') || ''
 
-  // 필터
-  const [showFilters, setShowFilters] = useState(!!urlStatus)
+  // 필터 (항상 표시)
   const [filterStatus, setFilterStatus] = useState(urlStatus)
   const [filterManager, setFilterManager] = useState('')
   const [filterErp, setFilterErp] = useState('')
   const [filterConnection, setFilterConnection] = useState('')
+  const [filterReceptionFrom, setFilterReceptionFrom] = useState('')
+  const [filterReceptionTo, setFilterReceptionTo] = useState('')
+  const [filterOpeningFrom, setFilterOpeningFrom] = useState('')
+  const [filterOpeningTo, setFilterOpeningTo] = useState('')
 
   // 정렬
   const [sortKey, setSortKey] = useState<string>('created_at')
@@ -134,6 +137,10 @@ export default function Customers() {
     if (filterManager) result = result.filter((c) => c.manager === filterManager)
     if (filterErp) result = result.filter((c) => c.erp_company === filterErp)
     if (filterConnection) result = result.filter((c) => c.connection_status === filterConnection)
+    if (filterReceptionFrom) result = result.filter((c) => c.reception_date && c.reception_date >= filterReceptionFrom)
+    if (filterReceptionTo) result = result.filter((c) => c.reception_date && c.reception_date <= filterReceptionTo)
+    if (filterOpeningFrom) result = result.filter((c) => c.opening_date && c.opening_date >= filterOpeningFrom)
+    if (filterOpeningTo) result = result.filter((c) => c.opening_date && c.opening_date <= filterOpeningTo)
 
     // 정렬
     result = [...result].sort((a, b) => {
@@ -151,15 +158,19 @@ export default function Customers() {
   const totalPages = Math.ceil(filtered.length / PAGE_SIZE)
   const paged = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
 
-  useEffect(() => { setPage(1) }, [search, filterStatus, filterManager, filterErp, filterConnection])
+  useEffect(() => { setPage(1) }, [search, filterStatus, filterManager, filterErp, filterConnection, filterReceptionFrom, filterReceptionTo, filterOpeningFrom, filterOpeningTo])
 
-  const activeFilterCount = [filterStatus, filterManager, filterErp, filterConnection].filter(Boolean).length
+  const activeFilterCount = [filterStatus, filterManager, filterErp, filterConnection, filterReceptionFrom, filterReceptionTo, filterOpeningFrom, filterOpeningTo].filter(Boolean).length
 
   const clearFilters = () => {
     setFilterStatus('')
     setFilterManager('')
     setFilterErp('')
     setFilterConnection('')
+    setFilterReceptionFrom('')
+    setFilterReceptionTo('')
+    setFilterOpeningFrom('')
+    setFilterOpeningTo('')
     setSearch('')
   }
 
@@ -423,78 +434,85 @@ export default function Customers() {
         </div>
       </div>
 
-      {/* 검색 + 필터 토글 */}
-      <div className="flex gap-2 mb-3">
-        <div className="relative flex-1">
-          <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-          <input
-            type="text"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="고객명, 사업자번호, 담당자, 고객번호로 검색..."
-            className="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent outline-none text-sm"
-          />
-        </div>
-        <button
-          onClick={() => setShowFilters(!showFilters)}
-          className={`flex items-center gap-1.5 px-3 py-2.5 border rounded-lg transition text-sm shrink-0 ${
-            activeFilterCount > 0
-              ? 'border-emerald-500 bg-emerald-50 text-emerald-700'
-              : 'border-gray-300 text-gray-600 hover:bg-gray-50'
-          }`}
-        >
-          <Filter size={16} />
-          필터{activeFilterCount > 0 && ` (${activeFilterCount})`}
-        </button>
+      {/* 검색 */}
+      <div className="relative mb-3">
+        <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+        <input
+          type="text"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="고객명, 사업자번호, 담당자, 고객번호로 검색..."
+          className="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent outline-none text-sm"
+        />
       </div>
 
-      {/* 필터 패널 */}
-      {showFilters && (
-        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 mb-4">
-          <div className="flex items-center justify-between mb-3">
-            <span className="text-sm font-medium text-gray-700">조건 필터</span>
-            {activeFilterCount > 0 && (
-              <button onClick={clearFilters} className="flex items-center gap-1 text-xs text-gray-400 hover:text-red-500 transition">
-                <RotateCcw size={12} /> 초기화
-              </button>
-            )}
+      {/* 조건 필터 (항상 표시) */}
+      <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 mb-4">
+        <div className="flex items-center justify-between mb-3">
+          <span className="text-sm font-medium text-gray-700">조건 필터</span>
+          {activeFilterCount > 0 && (
+            <button onClick={clearFilters} className="flex items-center gap-1 text-xs text-gray-400 hover:text-red-500 transition">
+              <RotateCcw size={12} /> 초기화
+            </button>
+          )}
+        </div>
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-3">
+          <div>
+            <label className="block text-xs text-gray-500 mb-1">개설상태</label>
+            <select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white focus:ring-2 focus:ring-emerald-500 outline-none">
+              <option value="">전체</option>
+              {filterOptions.statuses.map((s) => <option key={s} value={s}>{s}</option>)}
+            </select>
           </div>
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-            <div>
-              <label className="block text-xs text-gray-500 mb-1">개설상태</label>
-              <select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white focus:ring-2 focus:ring-emerald-500 outline-none">
-                <option value="">전체</option>
-                {filterOptions.statuses.map((s) => <option key={s} value={s}>{s}</option>)}
-              </select>
-            </div>
-            <div>
-              <label className="block text-xs text-gray-500 mb-1">담당자</label>
-              <select value={filterManager} onChange={(e) => setFilterManager(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white focus:ring-2 focus:ring-emerald-500 outline-none">
-                <option value="">전체</option>
-                {filterOptions.managers.map((m) => <option key={m} value={m}>{m}</option>)}
-              </select>
-            </div>
-            <div>
-              <label className="block text-xs text-gray-500 mb-1">ERP회사</label>
-              <select value={filterErp} onChange={(e) => setFilterErp(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white focus:ring-2 focus:ring-emerald-500 outline-none">
-                <option value="">전체</option>
-                {filterOptions.erps.map((e) => <option key={e} value={e}>{e}</option>)}
-              </select>
-            </div>
-            <div>
-              <label className="block text-xs text-gray-500 mb-1">연계상태</label>
-              <select value={filterConnection} onChange={(e) => setFilterConnection(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white focus:ring-2 focus:ring-emerald-500 outline-none">
-                <option value="">전체</option>
-                {filterOptions.connections.map((c) => <option key={c} value={c}>{c}</option>)}
-              </select>
-            </div>
+          <div>
+            <label className="block text-xs text-gray-500 mb-1">담당자</label>
+            <select value={filterManager} onChange={(e) => setFilterManager(e.target.value)}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white focus:ring-2 focus:ring-emerald-500 outline-none">
+              <option value="">전체</option>
+              {filterOptions.managers.map((m) => <option key={m} value={m}>{m}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="block text-xs text-gray-500 mb-1">ERP회사</label>
+            <select value={filterErp} onChange={(e) => setFilterErp(e.target.value)}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white focus:ring-2 focus:ring-emerald-500 outline-none">
+              <option value="">전체</option>
+              {filterOptions.erps.map((e) => <option key={e} value={e}>{e}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="block text-xs text-gray-500 mb-1">연계상태</label>
+            <select value={filterConnection} onChange={(e) => setFilterConnection(e.target.value)}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white focus:ring-2 focus:ring-emerald-500 outline-none">
+              <option value="">전체</option>
+              {filterOptions.connections.map((c) => <option key={c} value={c}>{c}</option>)}
+            </select>
           </div>
         </div>
-      )}
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+          <div>
+            <label className="block text-xs text-gray-500 mb-1">신규접수일 (시작)</label>
+            <input type="date" value={filterReceptionFrom} onChange={(e) => setFilterReceptionFrom(e.target.value)}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white focus:ring-2 focus:ring-emerald-500 outline-none" />
+          </div>
+          <div>
+            <label className="block text-xs text-gray-500 mb-1">신규접수일 (종료)</label>
+            <input type="date" value={filterReceptionTo} onChange={(e) => setFilterReceptionTo(e.target.value)}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white focus:ring-2 focus:ring-emerald-500 outline-none" />
+          </div>
+          <div>
+            <label className="block text-xs text-gray-500 mb-1">개설/이행일 (시작)</label>
+            <input type="date" value={filterOpeningFrom} onChange={(e) => setFilterOpeningFrom(e.target.value)}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white focus:ring-2 focus:ring-emerald-500 outline-none" />
+          </div>
+          <div>
+            <label className="block text-xs text-gray-500 mb-1">개설/이행일 (종료)</label>
+            <input type="date" value={filterOpeningTo} onChange={(e) => setFilterOpeningTo(e.target.value)}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white focus:ring-2 focus:ring-emerald-500 outline-none" />
+          </div>
+        </div>
+      </div>
 
       {/* 건수 */}
       <p className="text-sm text-gray-500 mb-3">
