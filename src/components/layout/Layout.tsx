@@ -26,7 +26,14 @@ const navItems = [
       { to: '/customers/detail-search', label: '고객 상세 정보' },
     ],
   },
-  { to: '/reports', icon: FileBarChart, label: '보고서' },
+  {
+    label: '보고서', icon: FileBarChart, children: [
+      { to: '/reports/periodic', label: '업무 보고서' },
+      { to: '/reports/manager', label: '담당자 실적' },
+      { to: '/reports/unopened', label: '미개설 관리' },
+      { to: '/reports/marketing', label: '마케팅 보고서' },
+    ],
+  },
   { to: '/ai-assistant', icon: Bot, label: 'AI 어시스턴트' },
   { to: '/documents', icon: FolderOpen, label: '공유 문서함' },
   { to: '/calendar', icon: Calendar, label: '캘린더' },
@@ -39,7 +46,7 @@ export default function Layout() {
   const { profile } = useAuth()
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [expandedMenu, setExpandedMenu] = useState<string | null>(
-    location.pathname.startsWith('/customers') ? '고객정보관리' : null
+    location.pathname.startsWith('/customers') ? '고객정보관리' : location.pathname.startsWith('/reports') ? '보고서' : null
   )
   useNotification()
   useAutoBackup()

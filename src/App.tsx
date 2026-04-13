@@ -66,6 +66,7 @@ export default function App() {
           <Route path="/customers" element={<Customers />} />
           <Route path="/customers/:id" element={<CustomerDetail />} />
           <Route path="/customers/detail-search" element={<CustomerSearch />} />
+          <Route path="/reports/:tab" element={<Reports />} />
           <Route path="/reports" element={<Reports />} />
           <Route path="/ai-assistant" element={<AiAssistant />} />
           <Route path="/calendar" element={<CalendarPage />} />
