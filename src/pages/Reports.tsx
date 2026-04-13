@@ -55,12 +55,89 @@ export default function Reports() {
   const erpMap: Record<string, number> = {}; customers.forEach((c) => { if (c.erp_company) erpMap[c.erp_company] = (erpMap[c.erp_company] || 0) + 1 })
   const erpData = Object.entries(erpMap).sort((a, b) => b[1] - a[1]).slice(0, 8).map(([name, count]) => ({ name, count }))
 
+  // 해지 고객 통계
+  const terminated = customers.filter((c) => c.management_type === '해지' || c.termination_date)
+  const thisMonthTerminated = terminated.filter((c) => c.termination_date?.startsWith(thisMonthKey)).length
+  const lastMonthTerminated = terminated.filter((c) => c.termination_date?.startsWith(lastMonthKey)).length
+  const thisWeekTerminated = terminated.filter((c) => c.termination_date && c.termination_date >= weekStartStr && c.termination_date <= today).length
+  const thisYearTerminated = terminated.filter((c) => c.termination_date?.startsWith(String(now.getFullYear()))).length
+
+  const pct = (n: number, total: number) => total > 0 ? `${Math.round((n / total) * 100)}%` : '0%'
+
   const genExcel = (): { data: any[][]; title: string } => {
     const rd = `보고서 생성일: ${today}`
-    if (tab === 'periodic') { const pl = period === 'daily' ? '일간' : period === 'weekly' ? '주간' : period === 'monthly' ? '월간' : '연간'; return { title: `${pl} 업무 보고서`, data: [[`webcash 하나CMS팀 - ${pl} 업무 보고서`], [rd], [], ['[ 핵심 지표 ]'], ['구분', '건수'], ['이번 주 신규', thisWeekNew], ['이번 달 신규', thisMonthNew], ['전월 신규', lastMonthNew], ['올해 누적', thisYearNew], ['전체 고객', customers.length], [], ['[ 개설 상태 ]'], ['상태', '건수', '비율'], ['개설완료', sc.opened, `${customers.length > 0 ? Math.round((sc.opened / customers.length) * 100) : 0}%`], ['개설대기', sc.waiting, `${customers.length > 0 ? Math.round((sc.waiting / customers.length) * 100) : 0}%`], ['개설진행', sc.progress, `${customers.length > 0 ? Math.round((sc.progress / customers.length) * 100) : 0}%`], ['개설취소', sc.canceled, `${customers.length > 0 ? Math.round((sc.canceled / customers.length) * 100) : 0}%`], [], [`[ ${pl} 신규 접수 추이 ]`], ['기간', '건수'], ...getPeriodData(period).map((d) => [d.label, d.count])] } }
-    if (tab === 'manager') { const pl = managerPeriod === 'daily' ? '금일' : managerPeriod === 'weekly' ? '금주' : managerPeriod === 'monthly' ? '금월' : '올해'; return { title: '담당자별 실적', data: [['webcash 하나CMS팀 - 담당자별 실적 보고서'], [rd], [], ['[ 담당자별 실적 ]'], ['담당자', '전체', '개설완료', '개설대기', '개설진행', '개설취소', `${pl} 신규`, '전환율'], ...managerData.map(([n, s]) => [n, s.total, s.opened, s.waiting, s.progress, s.canceled, s.periodNew, `${s.total > 0 ? Math.round((s.opened / s.total) * 100) : 0}%`])] } }
-    if (tab === 'unopened') { return { title: '미개설 관리', data: [['webcash 하나CMS팀 - 미개설 고객 관리 보고서'], [rd], [], ['[ 미개설 현황 ]'], ['구분', '건수'], ['전체 미개설', unopened.length], ['30일 이내', u30.length], ['30~90일', u3090.length], ['90일+', u90.length], ['평균 미개설 기간', `${avgDays}일`], [], ['[ 미개설 고객 목록 ]'], ['고객명', '고객번호', '사업자번호', '담당자', '접수일', '상태', '미개설일수'], ...unopened.sort((a, b) => getDays(b) - getDays(a)).map((c) => [c.customer_name, c.customer_number, c.business_number, c.manager, c.reception_date, c.opening_status, getDays(c)])] } }
-    return { title: '마케팅 보고서', data: [['webcash 하나CMS팀 - 마케팅 보고서'], [rd], [], ['[ 상품별 현황 ]'], ['상품', '고객수', '비고'], ['대시보드', '-', '데이터 연동 예정'], ['글로벌대시보드', '-', '데이터 연동 예정'], ['이음텍스', '-', '데이터 연동 예정'], ['MAU', '-', '데이터 연동 예정'], [], ['[ ERP 회사별 ]'], ['ERP', '고객수'], ...erpData.map((e) => [e.name, e.count])] }
+    const pl = period === 'daily' ? '일간' : period === 'weekly' ? '주간' : period === 'monthly' ? '월간' : '연간'
+
+    if (tab === 'periodic') {
+      return { title: `${pl} 업무 보고서`, data: [
+        [`webcash 하나CMS팀 - ${pl} 업무 보고서`, '', '', '', '', ''],
+        [rd, '', '', '', '', ''],
+        [],
+        ['[ 핵심 지표 ]', '', '', '', '', ''],
+        ['구분', '신규 인입', '해지', '순증감', '', ''],
+        ['이번 주', thisWeekNew, thisWeekTerminated, thisWeekNew - thisWeekTerminated, '', ''],
+        ['이번 달', thisMonthNew, thisMonthTerminated, thisMonthNew - thisMonthTerminated, '', ''],
+        ['전월', lastMonthNew, lastMonthTerminated, lastMonthNew - lastMonthTerminated, '', ''],
+        ['올해 누적', thisYearNew, thisYearTerminated, thisYearNew - thisYearTerminated, '', ''],
+        [],
+        ['[ 전체 현황 ]', '', '', '', '', ''],
+        ['구분', '건수', '비율', '', '', ''],
+        ['전체 고객', customers.length, '100%', '', '', ''],
+        ['개설완료', sc.opened, pct(sc.opened, customers.length), '', '', ''],
+        ['개설대기', sc.waiting, pct(sc.waiting, customers.length), '', '', ''],
+        ['개설진행', sc.progress, pct(sc.progress, customers.length), '', '', ''],
+        ['개설취소', sc.canceled, pct(sc.canceled, customers.length), '', '', ''],
+        ['해지 고객', terminated.length, pct(terminated.length, customers.length), '', '', ''],
+        [],
+        [`[ ${pl} 신규 접수 추이 ]`, '', '', '', '', ''],
+        ['기간', '신규 인입', '', '', '', ''],
+        ...getPeriodData(period).map((d) => [d.label, d.count, '', '', '', '']),
+      ]}
+    }
+    if (tab === 'manager') {
+      const mpl = managerPeriod === 'daily' ? '금일' : managerPeriod === 'weekly' ? '금주' : managerPeriod === 'monthly' ? '금월' : '올해'
+      return { title: '담당자별 실적', data: [
+        ['webcash 하나CMS팀 - 담당자별 실적 보고서', '', '', '', '', '', '', ''],
+        [rd, '', '', '', '', '', '', ''],
+        [],
+        ['[ 담당자별 실적 현황 ]', '', '', '', '', '', '', ''],
+        ['담당자', '전체', '개설완료', '개설대기', '개설진행', '개설취소', `${mpl} 신규`, '전환율'],
+        ...managerData.map(([n, s]) => [n, s.total, s.opened, s.waiting, s.progress, s.canceled, s.periodNew, `${s.total > 0 ? Math.round((s.opened / s.total) * 100) : 0}%`]),
+      ]}
+    }
+    if (tab === 'unopened') {
+      return { title: '미개설 관리', data: [
+        ['webcash 하나CMS팀 - 미개설 고객 관리 보고서', '', '', '', '', '', ''],
+        [rd, '', '', '', '', '', ''],
+        [],
+        ['[ 미개설 현황 요약 ]', '', '', '', '', '', ''],
+        ['구분', '건수', '', '', '', '', ''],
+        ['전체 미개설', unopened.length, '', '', '', '', ''],
+        ['30일 이내', u30.length, '', '', '', '', ''],
+        ['30~90일', u3090.length, '', '', '', '', ''],
+        ['90일+', u90.length, '', '', '', '', ''],
+        ['평균 미개설 기간', `${avgDays}일`, '', '', '', '', ''],
+        [],
+        ['[ 미개설 고객 상세 목록 ]', '', '', '', '', '', ''],
+        ['고객명', '고객번호', '사업자번호', '담당자', '접수일', '상태', '미개설일수'],
+        ...unopened.sort((a, b) => getDays(b) - getDays(a)).map((c) => [c.customer_name, c.customer_number, c.business_number, c.manager, c.reception_date, c.opening_status, getDays(c)]),
+      ]}
+    }
+    return { title: '마케팅 보고서', data: [
+      ['webcash 하나CMS팀 - 마케팅 보고서', '', '', '', '', ''],
+      [rd, '', '', '', '', ''],
+      [],
+      ['[ 상품별 현황 ]', '', '', '', '', ''],
+      ['상품', '고객수', '비고', '', '', ''],
+      ['대시보드', '-', '데이터 연동 예정', '', '', ''],
+      ['글로벌대시보드', '-', '데이터 연동 예정', '', '', ''],
+      ['이음텍스', '-', '데이터 연동 예정', '', '', ''],
+      ['MAU', '-', '데이터 연동 예정', '', '', ''],
+      [],
+      ['[ ERP 회사별 분포 ]', '', '', '', '', ''],
+      ['ERP 회사', '고객수', '', '', '', ''],
+      ...erpData.map((e) => [e.name, e.count, '', '', '', '']),
+    ]}
   }
 
   const handleDownload = () => { const { data, title } = genExcel(); setPreviewData(data); setPreviewTitle(title); setShowPreview(true) }
@@ -118,7 +195,12 @@ export default function Reports() {
 
       {tab === 'periodic' && (<div className="space-y-5">
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-          {[{ l: '이번 주 신규', v: thisWeekNew, s: '' }, { l: '이번 달 신규', v: thisMonthNew, s: lastMonthNew > 0 ? `전월 대비 ${thisMonthNew >= lastMonthNew ? '+' : ''}${thisMonthNew - lastMonthNew}건` : '' }, { l: '올해 누적', v: thisYearNew, s: '' }, { l: '전체 고객', v: customers.length, s: '' }].map((c) => (
+          {[
+            { l: '이번 주 신규', v: thisWeekNew, s: '' },
+            { l: '이번 달 신규', v: thisMonthNew, s: lastMonthNew > 0 ? `전월 대비 ${thisMonthNew >= lastMonthNew ? '+' : ''}${thisMonthNew - lastMonthNew}건` : '' },
+            { l: '해지 고객', v: terminated.length, s: thisMonthTerminated > 0 ? `이번 달 ${thisMonthTerminated}건` : '' },
+            { l: '순증감 (금월)', v: thisMonthNew - thisMonthTerminated, s: `인입 ${thisMonthNew} - 해지 ${thisMonthTerminated}` },
+          ].map((c) => (
             <div key={c.l} className="bg-white rounded-xl p-4 shadow-sm border border-gray-100"><p className="text-xs text-gray-500 mb-1">{c.l}</p><p className="text-2xl font-bold text-gray-800">{c.v.toLocaleString()}<span className="text-sm font-normal text-gray-400 ml-0.5">건</span></p>{c.s && <p className={`text-xs mt-0.5 ${c.s.includes('+') ? 'text-emerald-500' : 'text-red-500'}`}>{c.s}</p>}</div>
           ))}
         </div>
