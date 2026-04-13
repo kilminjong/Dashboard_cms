@@ -12,6 +12,7 @@ import {
   FolderOpen,
   FileBarChart,
   ChevronDown,
+  TrendingUp,
 } from 'lucide-react'
 import { useState } from 'react'
 import { useNotification } from '../../hooks/useNotification'
@@ -34,6 +35,7 @@ const navItems = [
       { to: '/reports/marketing', label: '마케팅 보고서' },
     ],
   },
+  { to: '/marketing', icon: TrendingUp, label: '마케팅' },
   { to: '/ai-assistant', icon: Bot, label: 'AI 어시스턴트' },
   { to: '/documents', icon: FolderOpen, label: '공유 문서함' },
   { to: '/calendar', icon: Calendar, label: '캘린더' },

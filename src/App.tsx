@@ -10,6 +10,7 @@ import Customers from './pages/Customers'
 import CustomerDetail from './pages/CustomerDetail'
 import AiAssistant from './pages/AiAssistant'
 import CalendarPage from './pages/Calendar'
+import Marketing from './pages/Marketing'
 import Documents from './pages/Documents'
 import Reports from './pages/Reports'
 import CustomerSearch from './pages/CustomerSearch'
@@ -66,6 +67,7 @@ export default function App() {
           <Route path="/customers" element={<Customers />} />
           <Route path="/customers/:id" element={<CustomerDetail />} />
           <Route path="/customers/detail-search" element={<CustomerSearch />} />
+          <Route path="/marketing" element={<Marketing />} />
           <Route path="/reports/:tab" element={<Reports />} />
           <Route path="/reports" element={<Reports />} />
           <Route path="/ai-assistant" element={<AiAssistant />} />

@@ -64,7 +64,45 @@ export default function Reports() {
   }
 
   const handleDownload = () => { const { data, title } = genExcel(); setPreviewData(data); setPreviewTitle(title); setShowPreview(true) }
-  const confirmDownload = () => { const { data, title } = genExcel(); const ws = XLSX.utils.aoa_to_sheet(data); ws['!cols'] = Array(10).fill({ wch: 16 }); ws['!merges'] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: 6 } }]; const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, title); XLSX.writeFile(wb, `${title}_${today}.xlsx`); setShowPreview(false) }
+
+  const confirmDownload = () => {
+    const { data, title } = genExcel()
+    const ws = XLSX.utils.aoa_to_sheet(data)
+
+    // 컬럼 너비 자동 계산
+    const maxCols = Math.max(...data.map((r) => r.length))
+    ws['!cols'] = Array.from({ length: maxCols }, (_, ci) => {
+      const maxLen = Math.max(...data.map((r) => String(r[ci] ?? '').length))
+      return { wch: Math.max(maxLen * 2, 14) }
+    })
+
+    // 제목행 병합
+    ws['!merges'] = [{ s: { r: 0, c: 0 }, e: { r: 0, c: maxCols - 1 } }]
+
+    // 셀 스타일 적용 (제목, 섹션 헤더, 데이터 헤더)
+    data.forEach((row, ri) => {
+      row.forEach((_: any, ci: number) => {
+        const addr = XLSX.utils.encode_cell({ r: ri, c: ci })
+        if (!ws[addr]) return
+        const isTitle = ri === 0
+        const isSection = row[0] != null && String(row[0]).startsWith('[')
+        const isHeader = ri > 0 && !isSection && data[ri - 1]?.length === 0 || (data[ri - 1] && data[ri - 1][0] != null && String(data[ri - 1][0]).startsWith('['))
+
+        if (isTitle) {
+          ws[addr].s = { font: { bold: true, sz: 14, color: { rgb: 'FFFFFF' } }, fill: { fgColor: { rgb: '1E293B' } }, alignment: { horizontal: 'center' } }
+        } else if (isSection) {
+          ws[addr].s = { font: { bold: true, sz: 11 }, fill: { fgColor: { rgb: 'F3F4F6' } } }
+        } else if (isHeader) {
+          ws[addr].s = { font: { bold: true, sz: 10, color: { rgb: 'FFFFFF' } }, fill: { fgColor: { rgb: '059669' } }, alignment: { horizontal: 'center' } }
+        }
+      })
+    })
+
+    const wb = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(wb, ws, title)
+    XLSX.writeFile(wb, `${title}_${today}.xlsx`)
+    setShowPreview(false)
+  }
 
   if (loading) return <div className="text-center py-12 text-gray-400">불러오는 중...</div>
 
