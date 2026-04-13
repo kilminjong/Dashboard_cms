@@ -2,16 +2,7 @@ import { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import type { Customer, CustomerMemo, CustomerHistory } from '../types'
-import { ArrowLeft, Save, Plus, Sparkles, RefreshCw, Clock, Building2, Server, UserCircle, FileText, MessageSquare, Trash2 } from 'lucide-react'
-
-const TABS = [
-  { key: '기본정보', icon: Building2 },
-  { key: 'ERP정보', icon: Server },
-  { key: '담당자', icon: UserCircle },
-  { key: '계약현황', icon: FileText },
-  { key: '메모', icon: MessageSquare },
-] as const
-type Tab = typeof TABS[number]['key']
+import { ArrowLeft, Save, Plus, Sparkles, RefreshCw, Clock, Trash2, Edit2 } from 'lucide-react'
 
 const FIELD_GROUPS: Record<string, { key: string; label: string; type?: string; options?: string[] }[]> = {
   '기본정보': [
@@ -21,8 +12,16 @@ const FIELD_GROUPS: Record<string, { key: string; label: string; type?: string; 
     { key: 'build_type', label: '구축구분', type: 'select', options: ['신규', '해지후재구축', '이행'] },
     { key: 'management_type', label: '관리구분', type: 'select', options: ['정상', '해지', '취소'] },
     { key: 'construction_type', label: '구축형', type: 'select', options: ['기본형', '연계형'] },
+    { key: 'manager', label: '담당자' },
     { key: 'sensitive_customer', label: '민감고객', type: 'select', options: ['Y', 'N'] },
     { key: 'intimacy', label: '친밀도', type: 'select', options: ['상', '중', '하'] },
+    // 계약현황 통합
+    { key: 'reception_date', label: '신규접수일', type: 'date' },
+    { key: 'opening_status', label: '개설상태', type: 'select', options: ['개설대기', '개설진행', '개설취소', '개설완료', '이행완료'] },
+    { key: 'opening_date', label: '개설/이행일', type: 'date' },
+    { key: 'connection_status', label: '연계상태', type: 'select', options: ['ERP연계대기', 'ERP연계진행', 'ERP연계완료', 'ERP청구완료', '연계청구보류'] },
+    { key: 'connection_date', label: '연계일자', type: 'date' },
+    { key: 'termination_date', label: '해지일자', type: 'date' },
   ],
   'ERP정보': [
     { key: 'erp_company', label: 'ERP회사' },
@@ -34,19 +33,10 @@ const FIELD_GROUPS: Record<string, { key: string; label: string; type?: string; 
     { key: 'customer_ip', label: '고객사 IP' },
   ],
   '담당자': [
-    { key: 'manager', label: '담당자' },
     { key: 'customer_contact_person', label: '고객담당자' },
     { key: 'customer_department', label: '담당 부서', type: 'select-other', options: ['인사팀', '재무팀', '전산팀'] },
     { key: 'contact_phone', label: '담당자 연락처' },
     { key: 'contact_email', label: '담당자 이메일', type: 'email' },
-  ],
-  '계약현황': [
-    { key: 'reception_date', label: '신규접수일', type: 'date' },
-    { key: 'opening_status', label: '개설상태', type: 'select', options: ['개설대기', '개설진행', '개설취소', '개설완료', '이행완료'] },
-    { key: 'opening_date', label: '개설/이행일', type: 'date' },
-    { key: 'connection_status', label: '연계상태', type: 'select', options: ['ERP연계대기', 'ERP연계진행', 'ERP연계완료', 'ERP청구완료', '연계청구보류'] },
-    { key: 'connection_date', label: '연계일자', type: 'date' },
-    { key: 'termination_date', label: '해지일자', type: 'date' },
   ],
 }
 
@@ -71,7 +61,6 @@ export default function CustomerDetail() {
   const [customer, setCustomer] = useState<Customer | null>(null)
   const [form, setForm] = useState<Record<string, string>>({})
   const [originalForm, setOriginalForm] = useState<Record<string, string>>({})
-  const [activeTab, setActiveTab] = useState<Tab>('기본정보')
   const [editing, setEditing] = useState(false)
   const [saving, setSaving] = useState(false)
   const [loading, setLoading] = useState(true)
@@ -79,430 +68,259 @@ export default function CustomerDetail() {
   const [memos, setMemos] = useState<CustomerMemo[]>([])
   const [newMemo, setNewMemo] = useState('')
   const [memoLoading, setMemoLoading] = useState(false)
-
   const [aiMemoSummary, setAiMemoSummary] = useState('')
   const [aiMemoLoading, setAiMemoLoading] = useState(false)
-
   const [history, setHistory] = useState<CustomerHistory[]>([])
 
+  const [activeSection, setActiveSection] = useState<'info' | 'memo'>('info')
+
   useEffect(() => {
-    if (id) {
-      loadCustomer()
-      loadMemos()
-      loadHistory()
-    }
+    if (id) { loadCustomer(); loadMemos(); loadHistory() }
   }, [id])
 
   const loadCustomer = async () => {
-    const { data } = await supabase
-      .from('customers')
-      .select('*')
-      .eq('id', id)
-      .single()
-
+    const { data } = await supabase.from('customers').select('*').eq('id', id).single()
     if (data) {
       setCustomer(data)
       const f: Record<string, string> = {}
-      Object.values(FIELD_GROUPS).flat().forEach(({ key }) => {
-        f[key] = (data as any)[key] || ''
-      })
-      setForm(f)
-      setOriginalForm(f)
+      Object.values(FIELD_GROUPS).flat().forEach(({ key }) => { f[key] = (data as any)[key] || '' })
+      setForm(f); setOriginalForm(f)
     }
     setLoading(false)
   }
 
   const loadMemos = async () => {
-    const { data } = await supabase
-      .from('customer_memos')
-      .select('*')
-      .eq('customer_id', id)
-      .order('created_at', { ascending: false })
+    const { data } = await supabase.from('customer_memos').select('*').eq('customer_id', id).order('created_at', { ascending: false })
     setMemos(data || [])
   }
 
   const loadHistory = async () => {
-    const { data } = await supabase
-      .from('customer_history')
-      .select('*')
-      .eq('customer_id', id)
-      .order('changed_at', { ascending: false })
-      .limit(50)
+    const { data } = await supabase.from('customer_history').select('*').eq('customer_id', id).order('changed_at', { ascending: false }).limit(50)
     setHistory(data || [])
   }
 
   const handleSave = async () => {
     if (!customer) return
     setSaving(true)
-
     const { data: { user } } = await supabase.auth.getUser()
 
     const changes: { field_name: string; old_value: string; new_value: string }[] = []
+    const updateData: Record<string, any> = { updated_at: new Date().toISOString() }
     Object.keys(form).forEach((key) => {
       if (form[key] !== originalForm[key]) {
-        changes.push({
-          field_name: FIELD_LABELS[key] || key,
-          old_value: originalForm[key] || '',
-          new_value: form[key] || '',
-        })
+        updateData[key] = form[key] || null
+        changes.push({ field_name: FIELD_LABELS[key] || key, old_value: originalForm[key] || '', new_value: form[key] || '' })
       }
     })
-
-    // 변경된 필드만 업데이트
-    const updateData: Record<string, string> = { updated_at: new Date().toISOString() }
-    Object.keys(form).forEach((key) => {
-      if (form[key] !== originalForm[key]) {
-        updateData[key] = form[key]
-      }
+    // 빈 날짜 null 처리
+    Object.values(FIELD_GROUPS).flat().forEach((f) => {
+      if (f.type === 'date' && updateData[f.key] === '') updateData[f.key] = null
     })
 
-    const { error: updateError } = await supabase
-      .from('customers')
-      .update(updateData)
-      .eq('id', customer.id)
-
-    if (updateError) {
-      alert('저장에 실패했습니다: ' + updateError.message)
-      setSaving(false)
-      return
-    }
+    const { error } = await supabase.from('customers').update(updateData).eq('id', customer.id)
+    if (error) { alert('저장 실패: ' + error.message); setSaving(false); return }
 
     if (changes.length > 0 && user) {
       await supabase.from('customer_history').insert(
-        changes.map((c) => ({
-          customer_id: customer.id,
-          field_name: c.field_name,
-          old_value: c.old_value,
-          new_value: c.new_value,
-          changed_by: user.id,
-        }))
+        changes.map((c) => ({ customer_id: customer.id, field_name: c.field_name, old_value: c.old_value, new_value: c.new_value, changed_by: user.id }))
       )
     }
-
-    setOriginalForm({ ...form })
-    setEditing(false)
-    setSaving(false)
-    loadCustomer()
-    loadHistory()
+    setOriginalForm({ ...form }); setEditing(false); setSaving(false)
+    loadCustomer(); loadHistory()
   }
 
   const handleAddMemo = async () => {
     if (!newMemo.trim() || !id) return
     setMemoLoading(true)
-
     const { data: { user } } = await supabase.auth.getUser()
-    await supabase.from('customer_memos').insert([{
-      customer_id: id,
-      content: newMemo.trim(),
-      created_by: user?.id,
-    }])
-
-    setNewMemo('')
-    setMemoLoading(false)
-    loadMemos()
+    await supabase.from('customer_memos').insert([{ customer_id: id, content: newMemo.trim(), created_by: user?.id }])
+    setNewMemo(''); setMemoLoading(false); loadMemos()
   }
 
   const handleAiMemoSummary = async () => {
-    if (memos.length === 0) {
-      setAiMemoSummary('요약할 메모가 없습니다.')
-      return
-    }
-
+    if (memos.length === 0) { setAiMemoSummary('요약할 메모가 없습니다.'); return }
     setAiMemoLoading(true)
     try {
       const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
       const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY
       const { data: { session } } = await supabase.auth.getSession()
-
       const res = await fetch(`${supabaseUrl}/functions/v1/ai-summary`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${session?.access_token || supabaseAnonKey}`,
-          'apikey': supabaseAnonKey,
-        },
-        body: JSON.stringify({
-          memoSummaryRequest: true,
-          customerName: customer?.customer_name || '',
-          memos: memos.map((m) => ({
-            content: m.content,
-            date: new Date(m.created_at).toLocaleDateString('ko-KR'),
-          })),
-        }),
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session?.access_token || supabaseAnonKey}`, 'apikey': supabaseAnonKey },
+        body: JSON.stringify({ memoSummaryRequest: true, customerName: customer?.customer_name || '', memos: memos.map((m) => ({ content: m.content, date: new Date(m.created_at).toLocaleDateString('ko-KR') })) }),
       })
-
       const text = await res.text()
-      if (!res.ok) {
-        console.error(`[AI 메모 요약 에러 ${res.status}]`, text)
-        setAiMemoSummary('오류가 발생했습니다. 관리자에게 문의해주세요.')
-      } else {
-        const data = JSON.parse(text)
-        setAiMemoSummary(data?.summary || '요약을 생성할 수 없습니다.')
-      }
-    } catch (err) {
-      console.error('[AI 메모 요약 에러]', err)
-      setAiMemoSummary('오류가 발생했습니다. 관리자에게 문의해주세요.')
-    }
+      if (!res.ok) { setAiMemoSummary('오류가 발생했습니다.') }
+      else { const data = JSON.parse(text); setAiMemoSummary(data?.summary || '요약 실패') }
+    } catch { setAiMemoSummary('오류가 발생했습니다.') }
     setAiMemoLoading(false)
   }
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center py-20">
-        <RefreshCw size={24} className="animate-spin text-emerald-500" />
-      </div>
-    )
-  }
+  if (loading) return <div className="flex items-center justify-center py-20"><RefreshCw size={24} className="animate-spin text-emerald-500" /></div>
+  if (!customer) return <div className="text-center py-20"><p className="text-gray-400 mb-4">고객 정보를 찾을 수 없습니다.</p><button onClick={() => navigate('/customers')} className="text-emerald-600 hover:underline text-sm">목록으로</button></div>
 
-  if (!customer) {
-    return (
-      <div className="text-center py-20">
-        <p className="text-gray-400 mb-4">고객 정보를 찾을 수 없습니다.</p>
-        <button onClick={() => navigate('/customers')} className="text-emerald-600 hover:underline text-sm">
-          목록으로 돌아가기
-        </button>
-      </div>
-    )
-  }
-
-  return (
-    <div className="max-w-4xl mx-auto">
-      {/* 헤더 카드 */}
-      <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5 mb-5">
-        <div className="flex items-start gap-4">
-          <button onClick={() => navigate('/customers')} className="p-2 hover:bg-gray-100 rounded-lg transition mt-0.5 shrink-0">
-            <ArrowLeft size={20} className="text-gray-500" />
-          </button>
-
-          <div className="flex-1 min-w-0">
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-              <div>
-                <h2 className="text-xl font-bold text-gray-800 truncate">{customer.customer_name}</h2>
-                <div className="flex flex-wrap items-center gap-2 mt-1.5">
-                  <span className="text-sm text-gray-500">{customer.business_number || '사업자번호 없음'}</span>
-                  <span className="text-gray-300">·</span>
-                  <span className="text-sm text-gray-500">{customer.manager || '담당자 미지정'}</span>
-                  {customer.opening_status && (
-                    <>
-                      <span className="text-gray-300">·</span>
-                      <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${statusBadge(customer.opening_status)}`}>
-                        {customer.opening_status}
-                      </span>
-                    </>
-                  )}
-                </div>
-              </div>
-
-              {editing ? (
-                <div className="flex gap-2 shrink-0">
-                  <button
-                    onClick={() => { setEditing(false); setForm({ ...originalForm }) }}
-                    className="px-4 py-2 border border-gray-300 text-gray-600 rounded-lg hover:bg-gray-50 transition text-sm"
-                  >
-                    취소
-                  </button>
-                  <button
-                    onClick={handleSave}
-                    disabled={saving}
-                    className="flex items-center gap-1.5 px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition text-sm"
-                  >
-                    <Save size={15} />
-                    {saving ? '저장 중...' : '저장'}
-                  </button>
-                </div>
-              ) : (
-                <button
-                  onClick={() => setEditing(true)}
-                  className="px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition text-sm shrink-0"
-                >
-                  수정
-                </button>
-              )}
+  // 전체현황 렌더링 함수
+  const renderOverview = () => (
+    <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-6">
+      <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+        <div className="bg-blue-50 px-4 py-2 border-b border-blue-100"><span className="text-sm font-semibold text-blue-700">고객 / 계약 정보</span></div>
+        <div className="text-xs">
+          {[
+            ['고객명', form.customer_name], ['사업자번호', form.business_number], ['고객번호', form.customer_number],
+            ['구축구분', form.build_type], ['관리구분', form.management_type], ['구축형', form.construction_type],
+            ['담당자', form.manager], ['접수일', form.reception_date],
+            ['개설상태', form.opening_status], ['개설일', form.opening_date],
+            ['연계상태', form.connection_status], ['연계일자', form.connection_date],
+            ['해지일자', form.termination_date], ['민감고객', form.sensitive_customer], ['친밀도', form.intimacy],
+          ].map(([label, val], i) => (
+            <div key={label} className={`flex ${i % 2 === 0 ? 'bg-white' : 'bg-gray-50'}`}>
+              <span className="px-3 py-2 w-24 shrink-0 font-medium text-gray-500 border-r border-gray-100">{label}</span>
+              <span className="px-3 py-2 text-gray-800">
+                {label === '개설상태' && val ? <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${statusBadge(val)}`}>{val}</span> : val || '-'}
+              </span>
             </div>
-          </div>
-        </div>
-      </div>
-
-      {/* 탭 */}
-      <div className="bg-white rounded-xl shadow-sm border border-gray-100 mb-5 overflow-hidden">
-        <div className="flex overflow-x-auto">
-          {TABS.map((tab) => (
-            <button
-              key={tab.key}
-              onClick={() => setActiveTab(tab.key)}
-              className={`flex items-center gap-1.5 px-4 py-3 text-sm font-medium whitespace-nowrap transition border-b-2 flex-1 justify-center min-w-0 ${
-                activeTab === tab.key
-                  ? 'border-emerald-600 text-emerald-600 bg-emerald-50/50'
-                  : 'border-transparent text-gray-400 hover:text-gray-600 hover:bg-gray-50'
-              }`}
-            >
-              <tab.icon size={15} />
-              <span className="hidden sm:inline">{tab.key}</span>
-              <span className="sm:hidden text-xs">{tab.key}</span>
-            </button>
           ))}
         </div>
       </div>
+      <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+        <div className="bg-purple-50 px-4 py-2 border-b border-purple-100"><span className="text-sm font-semibold text-purple-700">ERP / 서버 정보</span></div>
+        <div className="text-xs">
+          {[
+            ['ERP회사', form.erp_company], ['ERP종류', form.erp_type], ['ERP DB', form.erp_db],
+            ['연계방식', form.connection_method], ['서버위치', form.server_location],
+            ['스케줄사용', form.schedule_use], ['고객사 IP', form.customer_ip],
+          ].map(([label, val], i) => (
+            <div key={label} className={`flex ${i % 2 === 0 ? 'bg-white' : 'bg-gray-50'}`}>
+              <span className="px-3 py-2 w-24 shrink-0 font-medium text-gray-500 border-r border-gray-100">{label}</span>
+              <span className="px-3 py-2 text-gray-800">{val || '-'}</span>
+            </div>
+          ))}
+        </div>
+        <div className="bg-amber-50 px-4 py-2 border-t border-b border-amber-100"><span className="text-sm font-semibold text-amber-700">담당자 정보</span></div>
+        <div className="text-xs">
+          {[
+            ['고객담당자', form.customer_contact_person], ['담당부서', form.customer_department],
+            ['연락처', form.contact_phone], ['이메일', form.contact_email],
+          ].map(([label, val], i) => (
+            <div key={label} className={`flex ${i % 2 === 0 ? 'bg-white' : 'bg-gray-50'}`}>
+              <span className="px-3 py-2 w-24 shrink-0 font-medium text-gray-500 border-r border-gray-100">{label}</span>
+              <span className="px-3 py-2 text-gray-800">{val || '-'}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  )
 
-      {/* 탭 내용: 필드 그룹 */}
-      {activeTab !== '메모' && FIELD_GROUPS[activeTab] && (
-        <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-          <div className="divide-y divide-gray-50">
-            {FIELD_GROUPS[activeTab].map((field) => (
-              <div key={field.key} className="flex flex-col sm:flex-row sm:items-center px-5 py-3.5 gap-1 sm:gap-0">
-                <label className="text-sm font-medium text-gray-500 sm:w-40 shrink-0">{field.label}</label>
-                <div className="flex-1">
-                  {editing ? (
-                    field.type === 'select' && field.options ? (
-                      <select
-                        value={form[field.key] || ''}
-                        onChange={(e) => setForm({ ...form, [field.key]: e.target.value })}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent outline-none text-sm bg-white"
-                      >
-                        <option value="">선택하세요</option>
-                        {field.options.map((opt) => (
-                          <option key={opt} value={opt}>{opt}</option>
-                        ))}
-                      </select>
-                    ) : field.type === 'select-other' && field.options ? (
-                      <div className="flex gap-2">
-                        <select
-                          value={field.options.includes(form[field.key]) ? form[field.key] : '기타'}
-                          onChange={(e) => {
-                            if (e.target.value === '기타') {
-                              setForm({ ...form, [field.key]: '' })
-                            } else {
-                              setForm({ ...form, [field.key]: e.target.value })
-                            }
-                          }}
-                          className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent outline-none text-sm bg-white"
-                        >
-                          {field.options.map((opt) => (
-                            <option key={opt} value={opt}>{opt}</option>
-                          ))}
-                          <option value="기타">기타(직접입력)</option>
-                        </select>
-                        {!field.options.includes(form[field.key]) && (
-                          <input
-                            type="text"
-                            value={form[field.key] || ''}
-                            onChange={(e) => setForm({ ...form, [field.key]: e.target.value })}
-                            className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent outline-none text-sm"
-                            placeholder="직접 입력"
-                          />
-                        )}
-                      </div>
-                    ) : (
-                      <input
-                        type={field.type || 'text'}
-                        value={form[field.key] || ''}
-                        onChange={(e) => {
-                          let val = e.target.value
-                          if (field.key === 'business_number' || field.key === 'customer_number') {
-                            val = val.replace(/[^0-9]/g, '')
-                          }
-                          setForm({ ...form, [field.key]: val })
-                        }}
-                        maxLength={field.key === 'business_number' ? 10 : field.key === 'customer_number' ? 9 : undefined}
-                        inputMode={field.key === 'business_number' || field.key === 'customer_number' ? 'numeric' : undefined}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent outline-none text-sm"
-                      />
-                    )
-                  ) : (
-                    <span className="text-sm text-gray-800">
-                      {field.key === 'opening_status' && form[field.key] ? (
-                        <span className={`px-2.5 py-1 rounded-full text-xs font-medium ${statusBadge(form[field.key])}`}>
-                          {form[field.key]}
-                        </span>
-                      ) : (
-                        form[field.key] || <span className="text-gray-300">-</span>
-                      )}
-                    </span>
-                  )}
-                </div>
-              </div>
-            ))}
+  // 필드 렌더링
+  const renderField = (field: any) => {
+    if (field.type === 'select' && field.options) {
+      return <select value={form[field.key] || ''} onChange={(e) => setForm({ ...form, [field.key]: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white focus:ring-2 focus:ring-emerald-500 outline-none"><option value="">선택</option>{field.options.map((o: string) => <option key={o} value={o}>{o}</option>)}</select>
+    }
+    if (field.type === 'select-other' && field.options) {
+      return <div className="flex gap-2">
+        <select value={field.options.includes(form[field.key]) ? form[field.key] : form[field.key] ? '기타' : ''} onChange={(e) => { if (e.target.value === '기타') setForm({ ...form, [field.key]: '' }); else setForm({ ...form, [field.key]: e.target.value }) }} className="px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white focus:ring-2 focus:ring-emerald-500 outline-none"><option value="">선택</option>{field.options.map((o: string) => <option key={o} value={o}>{o}</option>)}<option value="기타">기타</option></select>
+        {!field.options.includes(form[field.key]) && form[field.key] !== '' && <input type="text" value={form[field.key] || ''} onChange={(e) => setForm({ ...form, [field.key]: e.target.value })} className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 outline-none" placeholder="직접 입력" />}
+      </div>
+    }
+    return <input type={field.type || 'text'} value={form[field.key] || ''} onChange={(e) => { let v = e.target.value; if (field.key === 'business_number' || field.key === 'customer_number') v = v.replace(/[^0-9]/g, ''); setForm({ ...form, [field.key]: v }) }} maxLength={field.key === 'business_number' ? 10 : field.key === 'customer_number' ? 9 : undefined} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 outline-none" />
+  }
+
+  return (
+    <div className="max-w-5xl mx-auto">
+      {/* 헤더 */}
+      <div className="flex items-center gap-3 mb-4">
+        <button onClick={() => navigate('/customers')} className="p-2 hover:bg-gray-100 rounded-lg transition"><ArrowLeft size={20} className="text-gray-500" /></button>
+        <div className="flex-1 min-w-0">
+          <h2 className="text-xl font-bold text-gray-800 truncate">{customer.customer_name}</h2>
+          <div className="flex flex-wrap items-center gap-2 mt-0.5">
+            <span className="text-sm text-gray-500">{customer.business_number || '-'}</span>
+            <span className="text-gray-300">·</span>
+            <span className="text-sm text-gray-500">{customer.manager || '-'}</span>
+            {customer.opening_status && <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${statusBadge(customer.opening_status)}`}>{customer.opening_status}</span>}
           </div>
         </div>
+        <div className="flex gap-2 shrink-0">
+          <button onClick={() => setActiveSection('info')} className={`px-3 py-1.5 rounded-lg text-sm font-medium transition ${activeSection === 'info' ? 'bg-emerald-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>정보</button>
+          <button onClick={() => setActiveSection('memo')} className={`px-3 py-1.5 rounded-lg text-sm font-medium transition ${activeSection === 'memo' ? 'bg-emerald-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>메모 ({memos.length})</button>
+        </div>
+      </div>
+
+      {/* 정보 섹션 */}
+      {activeSection === 'info' && (
+        <>
+          {/* 전체현황 (상단 바로 표시) */}
+          {!editing && renderOverview()}
+
+          {/* 수정 버튼 */}
+          {!editing && (
+            <button onClick={() => setEditing(true)} className="flex items-center gap-1.5 px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition text-sm mb-4">
+              <Edit2 size={15} /> 정보 수정
+            </button>
+          )}
+
+          {/* 인라인 수정 폼 */}
+          {editing && (
+            <div className="bg-white rounded-xl shadow-sm border border-emerald-200 p-5 mb-6">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="font-bold text-gray-800">정보 수정</h3>
+                <div className="flex gap-2">
+                  <button onClick={() => { setEditing(false); setForm({ ...originalForm }) }} className="px-3 py-1.5 border border-gray-300 text-gray-600 rounded-lg hover:bg-gray-50 text-sm">취소</button>
+                  <button onClick={handleSave} disabled={saving} className="flex items-center gap-1.5 px-4 py-1.5 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 text-sm"><Save size={14} />{saving ? '저장 중...' : '저장'}</button>
+                </div>
+              </div>
+
+              {Object.entries(FIELD_GROUPS).map(([group, fields]) => (
+                <div key={group} className="mb-5">
+                  <p className="text-xs font-semibold text-gray-500 uppercase mb-2">{group}</p>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                    {fields.map((field) => (
+                      <div key={field.key}>
+                        <label className="block text-xs font-medium text-gray-500 mb-1">{field.label}</label>
+                        {renderField(field)}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </>
       )}
 
-      {/* 메모 탭 */}
-      {activeTab === '메모' && (
+      {/* 메모 섹션 */}
+      {activeSection === 'memo' && (
         <div className="space-y-4">
           {/* AI 요약 */}
           <div className="bg-gradient-to-r from-emerald-50 to-teal-50 border border-emerald-200 rounded-xl p-4">
             <div className="flex items-center justify-between mb-2">
-              <div className="flex items-center gap-2">
-                <Sparkles size={16} className="text-emerald-600" />
-                <span className="text-sm font-medium text-emerald-700">AI 메모 요약</span>
-              </div>
-              <button
-                onClick={handleAiMemoSummary}
-                disabled={aiMemoLoading}
-                className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition text-xs"
-              >
-                {aiMemoLoading ? (
-                  <><RefreshCw size={12} className="animate-spin" /> 분석 중...</>
-                ) : (
-                  <><Sparkles size={12} /> AI 자동 요약</>
-                )}
+              <div className="flex items-center gap-2"><Sparkles size={16} className="text-emerald-600" /><span className="text-sm font-medium text-emerald-700">AI 메모 요약</span></div>
+              <button onClick={handleAiMemoSummary} disabled={aiMemoLoading} className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition text-xs">
+                {aiMemoLoading ? <><RefreshCw size={12} className="animate-spin" /> 분석 중...</> : <><Sparkles size={12} /> AI 자동 요약</>}
               </button>
             </div>
-            {aiMemoSummary ? (
-              <p className="text-sm text-gray-700 leading-relaxed bg-white/60 rounded-lg p-3 mt-2">{aiMemoSummary}</p>
-            ) : (
-              <p className="text-sm text-emerald-600/60 mt-2">AI 자동 요약 버튼을 눌러 메모를 요약해보세요.</p>
-            )}
+            {aiMemoSummary ? <p className="text-sm text-gray-700 bg-white/60 rounded-lg p-3 mt-2">{aiMemoSummary}</p> : <p className="text-sm text-emerald-600/60 mt-2">AI 자동 요약 버튼을 눌러 메모를 요약해보세요.</p>}
           </div>
 
           {/* 메모 입력 */}
           <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
-            <textarea
-              value={newMemo}
-              onChange={(e) => setNewMemo(e.target.value)}
-              rows={3}
-              className="w-full px-3 py-2.5 border border-gray-200 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent outline-none text-sm resize-none placeholder-gray-300"
-              placeholder="메모를 입력하세요 (영업 이력, 특이사항, 통화 내용 등)"
-            />
+            <textarea value={newMemo} onChange={(e) => setNewMemo(e.target.value)} rows={3} className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm resize-none focus:ring-2 focus:ring-emerald-500 outline-none placeholder-gray-300" placeholder="메모를 입력하세요 (영업 이력, 특이사항, 통화 내용 등)" />
             <div className="flex justify-end mt-2">
-              <button
-                onClick={handleAddMemo}
-                disabled={memoLoading || !newMemo.trim()}
-                className="flex items-center gap-1.5 px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 disabled:opacity-40 transition text-sm"
-              >
-                <Plus size={15} />
-                {memoLoading ? '저장 중...' : '메모 추가'}
-              </button>
+              <button onClick={handleAddMemo} disabled={memoLoading || !newMemo.trim()} className="flex items-center gap-1.5 px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 disabled:opacity-40 transition text-sm"><Plus size={15} />{memoLoading ? '저장 중...' : '메모 추가'}</button>
             </div>
           </div>
 
-          {/* 메모 타임라인 */}
+          {/* 메모 목록 */}
           <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-            <div className="px-5 py-3 border-b border-gray-100">
-              <h4 className="text-sm font-semibold text-gray-700">메모 기록 ({memos.length}건)</h4>
-            </div>
-            {memos.length === 0 ? (
-              <p className="text-center py-10 text-gray-300 text-sm">등록된 메모가 없습니다.</p>
-            ) : (
+            <div className="px-5 py-3 border-b border-gray-100"><h4 className="text-sm font-semibold text-gray-700">메모 기록 ({memos.length}건)</h4></div>
+            {memos.length === 0 ? <p className="text-center py-10 text-gray-300 text-sm">등록된 메모가 없습니다.</p> : (
               <div className="divide-y divide-gray-50">
                 {memos.map((memo) => (
                   <div key={memo.id} className="px-5 py-4">
-                    <p className="text-sm text-gray-800 whitespace-pre-wrap leading-relaxed">{memo.content}</p>
+                    <p className="text-sm text-gray-800 whitespace-pre-wrap">{memo.content}</p>
                     <div className="flex items-center justify-between mt-2">
-                      <p className="text-xs text-gray-400">
-                        {new Date(memo.created_at).toLocaleString('ko-KR')}
-                      </p>
-                      <button
-                        onClick={async () => {
-                          if (!confirm('이 메모를 삭제하시겠습니까?')) return
-                          await supabase.from('customer_memos').delete().eq('id', memo.id)
-                          loadMemos()
-                        }}
-                        className="p-1 text-gray-300 hover:text-red-500 transition"
-                        title="메모 삭제"
-                      >
-                        <Trash2 size={14} />
-                      </button>
+                      <p className="text-xs text-gray-400">{new Date(memo.created_at).toLocaleString('ko-KR')}</p>
+                      <button onClick={async () => { if (!confirm('삭제하시겠습니까?')) return; await supabase.from('customer_memos').delete().eq('id', memo.id); loadMemos() }} className="p-1 text-gray-300 hover:text-red-500 transition"><Trash2 size={14} /></button>
                     </div>
                   </div>
                 ))}
@@ -513,11 +331,8 @@ export default function CustomerDetail() {
           {/* 변경 이력 */}
           {history.length > 0 && (
             <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-              <div className="px-5 py-3 border-b border-gray-100 flex items-center gap-2">
-                <Clock size={15} className="text-gray-400" />
-                <h4 className="text-sm font-semibold text-gray-700">변경 이력</h4>
-              </div>
-              <div className="divide-y divide-gray-50 max-h-[350px] overflow-y-auto">
+              <div className="px-5 py-3 border-b border-gray-100 flex items-center gap-2"><Clock size={15} className="text-gray-400" /><h4 className="text-sm font-semibold text-gray-700">변경 이력</h4></div>
+              <div className="divide-y divide-gray-50 max-h-[300px] overflow-y-auto">
                 {history.map((h) => (
                   <div key={h.id} className="px-5 py-3">
                     <div className="flex flex-wrap items-center gap-1.5 text-sm">
@@ -527,96 +342,12 @@ export default function CustomerDetail() {
                       <span className="text-gray-400">→</span>
                       <span className="text-emerald-600 font-medium text-xs">{h.new_value || '(없음)'}</span>
                     </div>
-                    <p className="text-xs text-gray-400 mt-1">
-                      {new Date(h.changed_at).toLocaleString('ko-KR')}
-                    </p>
+                    <p className="text-xs text-gray-400 mt-1">{new Date(h.changed_at).toLocaleString('ko-KR')}</p>
                   </div>
                 ))}
               </div>
             </div>
           )}
-        </div>
-      )}
-
-      {/* 전체 현황 한눈에 보기 */}
-      {customer && !editing && (
-        <div className="mt-6 space-y-4">
-          <h3 className="text-sm font-semibold text-gray-500">전체 현황 한눈에 보기</h3>
-
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-            {/* 고객정보 */}
-            <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-              <div className="bg-blue-50 px-4 py-2 border-b border-blue-100">
-                <span className="text-sm font-semibold text-blue-700">고객정보</span>
-              </div>
-              <div className="grid grid-cols-2 text-xs">
-                {[
-                  ['고객명', form.customer_name],
-                  ['사업자번호', form.business_number],
-                  ['고객번호', form.customer_number],
-                  ['구축구분', form.build_type],
-                  ['관리구분', form.management_type],
-                  ['구축형', form.construction_type],
-                  ['담당자', form.manager],
-                  ['접수일', form.reception_date],
-                  ['개설상태', form.opening_status],
-                  ['개설일', form.opening_date],
-                  ['연계상태', form.connection_status],
-                  ['연계일자', form.connection_date],
-                  ['해지일자', form.termination_date],
-                  ['민감고객', form.sensitive_customer],
-                  ['친밀도', form.intimacy],
-                ].map(([label, val]) => (
-                  <div key={label} className="flex border-b border-gray-50 last:border-0">
-                    <span className="bg-gray-50 px-3 py-2 w-24 shrink-0 font-medium text-gray-500 border-r border-gray-100">{label}</span>
-                    <span className="px-3 py-2 text-gray-800 truncate">{val || '-'}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* 서버/ERP 정보 */}
-            <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-              <div className="bg-purple-50 px-4 py-2 border-b border-purple-100">
-                <span className="text-sm font-semibold text-purple-700">서버/ERP 정보</span>
-              </div>
-              <div className="grid grid-cols-1 text-xs">
-                {[
-                  ['ERP회사', form.erp_company],
-                  ['ERP 종류', form.erp_type],
-                  ['ERP DB', form.erp_db],
-                  ['연계방식', form.connection_method],
-                  ['서버위치', form.server_location],
-                  ['스케줄사용', form.schedule_use],
-                  ['고객사 IP', form.customer_ip],
-                ].map(([label, val]) => (
-                  <div key={label} className="flex border-b border-gray-50 last:border-0">
-                    <span className="bg-gray-50 px-3 py-2 w-28 shrink-0 font-medium text-gray-500 border-r border-gray-100">{label}</span>
-                    <span className="px-3 py-2 text-gray-800">{val || '-'}</span>
-                  </div>
-                ))}
-              </div>
-
-              {/* 담당자 정보 */}
-              <div className="bg-amber-50 px-4 py-2 border-t border-b border-amber-100">
-                <span className="text-sm font-semibold text-amber-700">담당자 정보</span>
-              </div>
-              <div className="grid grid-cols-1 text-xs">
-                {[
-                  ['담당자', form.manager],
-                  ['고객담당자', form.customer_contact_person],
-                  ['담당부서', form.customer_department],
-                  ['연락처', form.contact_phone],
-                  ['이메일', form.contact_email],
-                ].map(([label, val]) => (
-                  <div key={label} className="flex border-b border-gray-50 last:border-0">
-                    <span className="bg-gray-50 px-3 py-2 w-28 shrink-0 font-medium text-gray-500 border-r border-gray-100">{label}</span>
-                    <span className="px-3 py-2 text-gray-800">{val || '-'}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
         </div>
       )}
     </div>
