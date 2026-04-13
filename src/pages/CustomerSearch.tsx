@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
-import { Search, User } from 'lucide-react'
+import { Search, User, Building2, Server, FileText } from 'lucide-react'
 
 export default function CustomerSearch() {
   const navigate = useNavigate()
@@ -9,16 +9,18 @@ export default function CustomerSearch() {
   const [results, setResults] = useState<any[]>([])
   const [loading, setLoading] = useState(false)
   const [searched, setSearched] = useState(false)
+  const [selectedCustomer, setSelectedCustomer] = useState<any>(null)
 
   const handleSearch = async () => {
     if (!search.trim()) return
     setLoading(true)
     setSearched(true)
+    setSelectedCustomer(null)
 
     const q = search.trim()
     const { data } = await supabase
       .from('customers')
-      .select('id, customer_name, customer_number, business_number, opening_status, manager, reception_date, connection_status, erp_company, erp_type, contact_phone, contact_email, customer_contact_person')
+      .select('*')
       .or(`customer_name.ilike.%${q}%,business_number.ilike.%${q}%,customer_number.ilike.%${q}%,manager.ilike.%${q}%`)
       .order('created_at', { ascending: false })
       .limit(50)
@@ -42,7 +44,7 @@ export default function CustomerSearch() {
   return (
     <div>
       <h2 className="text-2xl font-bold text-gray-800 mb-1">고객 상세 정보</h2>
-      <p className="text-sm text-gray-400 mb-6">고객명, 사업자번호, 고객번호, 담당자로 검색하여 상세 정보를 조회합니다.</p>
+      <p className="text-sm text-gray-400 mb-6">고객을 검색하여 기본정보, ERP정보, 담당자, 계약현황을 한눈에 확인합니다.</p>
 
       {/* 검색 */}
       <div className="flex gap-2 mb-6">
@@ -58,7 +60,6 @@ export default function CustomerSearch() {
         </button>
       </div>
 
-      {/* 결과 */}
       {!searched ? (
         <div className="text-center py-20">
           <Search size={48} className="text-gray-200 mx-auto mb-4" />
@@ -71,38 +72,156 @@ export default function CustomerSearch() {
           <p className="text-gray-400">"{search}"에 대한 검색 결과가 없습니다.</p>
         </div>
       ) : (
-        <div>
-          <p className="text-sm text-gray-500 mb-3">검색 결과: <strong className="text-gray-700">{results.length}</strong>건</p>
-          <div className="space-y-3">
+        <div className="flex gap-6">
+          {/* 좌측: 검색 결과 목록 */}
+          <div className={`space-y-2 ${selectedCustomer ? 'w-1/3 hidden lg:block' : 'w-full'}`}>
+            <p className="text-sm text-gray-500 mb-2">검색 결과: <strong>{results.length}</strong>건</p>
             {results.map((c) => (
-              <div key={c.id} onClick={() => navigate(`/customers/${c.id}`)}
-                className="bg-white rounded-xl border border-gray-100 shadow-sm p-5 hover:border-emerald-200 hover:shadow-md cursor-pointer transition">
-                <div className="flex items-start justify-between gap-4">
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-2">
-                      <h4 className="font-semibold text-gray-800">{c.customer_name}</h4>
-                      <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${statusBadge(c.opening_status || '')}`}>
-                        {c.opening_status || '미정'}
-                      </span>
-                    </div>
-                    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-x-6 gap-y-1.5 text-xs">
-                      <div><span className="text-gray-400">고객번호</span> <span className="text-gray-700 ml-1">{c.customer_number || '-'}</span></div>
-                      <div><span className="text-gray-400">사업자번호</span> <span className="text-gray-700 ml-1">{c.business_number || '-'}</span></div>
-                      <div><span className="text-gray-400">담당자</span> <span className="text-gray-700 ml-1">{c.manager || '-'}</span></div>
-                      <div><span className="text-gray-400">접수일</span> <span className="text-gray-700 ml-1">{c.reception_date || '-'}</span></div>
-                      <div><span className="text-gray-400">연계상태</span> <span className="text-gray-700 ml-1">{c.connection_status || '-'}</span></div>
-                      <div><span className="text-gray-400">ERP</span> <span className="text-gray-700 ml-1">{c.erp_company || '-'} {c.erp_type || ''}</span></div>
-                      <div><span className="text-gray-400">고객담당자</span> <span className="text-gray-700 ml-1">{c.customer_contact_person || '-'}</span></div>
-                      <div><span className="text-gray-400">연락처</span> <span className="text-gray-700 ml-1">{c.contact_phone || '-'}</span></div>
-                    </div>
-                  </div>
-                  <div className="shrink-0 bg-gray-100 p-2 rounded-lg">
-                    <User size={18} className="text-gray-400" />
-                  </div>
+              <div key={c.id}
+                onClick={() => setSelectedCustomer(c)}
+                className={`bg-white rounded-xl border shadow-sm p-4 cursor-pointer transition ${
+                  selectedCustomer?.id === c.id ? 'border-emerald-300 bg-emerald-50/30' : 'border-gray-100 hover:border-gray-200'
+                }`}>
+                <div className="flex items-center justify-between mb-1">
+                  <span className="font-semibold text-sm text-gray-800">{c.customer_name}</span>
+                  <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${statusBadge(c.opening_status || '')}`}>
+                    {c.opening_status || '미정'}
+                  </span>
                 </div>
+                <p className="text-xs text-gray-500">{c.customer_number || '-'} · {c.business_number || '-'} · {c.manager || '-'}</p>
               </div>
             ))}
           </div>
+
+          {/* 우측: 선택된 고객 상세 */}
+          {selectedCustomer && (
+            <div className="flex-1 min-w-0">
+              <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden sticky top-4">
+                {/* 헤더 */}
+                <div className="bg-slate-800 text-white px-5 py-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h3 className="text-lg font-bold">{selectedCustomer.customer_name}</h3>
+                      <p className="text-sm text-slate-300 mt-0.5">
+                        {selectedCustomer.customer_number || '-'} · {selectedCustomer.business_number || '-'}
+                      </p>
+                    </div>
+                    <div className="flex gap-2">
+                      <span className={`px-2.5 py-1 rounded-full text-xs font-medium ${statusBadge(selectedCustomer.opening_status || '')}`}>
+                        {selectedCustomer.opening_status || '미정'}
+                      </span>
+                      <button onClick={() => navigate(`/customers/${selectedCustomer.id}`)}
+                        className="px-3 py-1 bg-emerald-600 text-white rounded-lg text-xs hover:bg-emerald-700 transition">
+                        상세 페이지
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="p-5 space-y-4 max-h-[70vh] overflow-y-auto">
+                  {/* 기본 정보 */}
+                  <div>
+                    <div className="flex items-center gap-2 mb-2">
+                      <Building2 size={15} className="text-blue-600" />
+                      <span className="text-sm font-semibold text-gray-700">기본 정보</span>
+                    </div>
+                    <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-xs">
+                      {[
+                        ['고객명', selectedCustomer.customer_name],
+                        ['고객번호', selectedCustomer.customer_number],
+                        ['사업자번호', selectedCustomer.business_number],
+                        ['담당자', selectedCustomer.manager],
+                        ['구축구분', selectedCustomer.build_type],
+                        ['관리구분', selectedCustomer.management_type],
+                        ['구축형', selectedCustomer.construction_type],
+                        ['민감고객', selectedCustomer.sensitive_customer],
+                        ['친밀도', selectedCustomer.intimacy],
+                      ].map(([label, val]) => (
+                        <div key={label} className="flex">
+                          <span className="text-gray-400 w-20 shrink-0">{label}</span>
+                          <span className="text-gray-800 font-medium">{val || '-'}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  <hr className="border-gray-100" />
+
+                  {/* 계약 현황 */}
+                  <div>
+                    <div className="flex items-center gap-2 mb-2">
+                      <FileText size={15} className="text-amber-600" />
+                      <span className="text-sm font-semibold text-gray-700">계약 현황</span>
+                    </div>
+                    <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-xs">
+                      {[
+                        ['신규접수일', selectedCustomer.reception_date],
+                        ['개설상태', selectedCustomer.opening_status],
+                        ['개설/이행일', selectedCustomer.opening_date],
+                        ['연계상태', selectedCustomer.connection_status],
+                        ['연계일자', selectedCustomer.connection_date],
+                        ['해지일자', selectedCustomer.termination_date],
+                      ].map(([label, val]) => (
+                        <div key={label} className="flex">
+                          <span className="text-gray-400 w-20 shrink-0">{label}</span>
+                          <span className="text-gray-800 font-medium">{val || '-'}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  <hr className="border-gray-100" />
+
+                  {/* ERP/서버 정보 */}
+                  <div>
+                    <div className="flex items-center gap-2 mb-2">
+                      <Server size={15} className="text-purple-600" />
+                      <span className="text-sm font-semibold text-gray-700">ERP/서버 정보</span>
+                    </div>
+                    <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-xs">
+                      {[
+                        ['ERP회사', selectedCustomer.erp_company],
+                        ['ERP종류', selectedCustomer.erp_type],
+                        ['ERP DB', selectedCustomer.erp_db],
+                        ['연계방식', selectedCustomer.connection_method],
+                        ['서버위치', selectedCustomer.server_location],
+                        ['스케줄사용', selectedCustomer.schedule_use],
+                        ['고객사 IP', selectedCustomer.customer_ip],
+                      ].map(([label, val]) => (
+                        <div key={label} className="flex">
+                          <span className="text-gray-400 w-20 shrink-0">{label}</span>
+                          <span className="text-gray-800 font-medium">{val || '-'}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  <hr className="border-gray-100" />
+
+                  {/* 담당자 정보 */}
+                  <div>
+                    <div className="flex items-center gap-2 mb-2">
+                      <User size={15} className="text-emerald-600" />
+                      <span className="text-sm font-semibold text-gray-700">담당자 정보</span>
+                    </div>
+                    <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-xs">
+                      {[
+                        ['고객담당자', selectedCustomer.customer_contact_person],
+                        ['담당부서', selectedCustomer.customer_department],
+                        ['연락처', selectedCustomer.contact_phone],
+                        ['이메일', selectedCustomer.contact_email],
+                      ].map(([label, val]) => (
+                        <div key={label} className="flex">
+                          <span className="text-gray-400 w-20 shrink-0">{label}</span>
+                          <span className="text-gray-800 font-medium">{val || '-'}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>

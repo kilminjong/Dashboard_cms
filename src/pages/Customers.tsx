@@ -5,19 +5,18 @@ import type { Customer } from '../types'
 import { Plus, Search, Edit2, Trash2, X, Upload, FileSpreadsheet, ChevronUp, ChevronDown, RotateCcw } from 'lucide-react'
 import * as XLSX from 'xlsx'
 
-const CUSTOMER_FIELDS: { key: string; label: string; required?: boolean; type?: string; options?: string[] }[] = [
+const CUSTOMER_FIELDS: { key: string; label: string; required?: boolean; type?: string; options?: string[]; default?: string }[] = [
   // 필수 입력사항 (상단 배치)
   { key: 'customer_name', label: '고객명', required: true },
   { key: 'business_number', label: '사업자번호', required: true },
   { key: 'customer_number', label: '고객번호', required: true },
   { key: 'manager', label: '담당자', required: true },
   { key: 'reception_date', label: '신규접수일', type: 'date', required: true },
-  { key: 'opening_status', label: '개설상태', type: 'select', options: ['개설대기', '개설진행', '개설취소', '개설완료', '이행완료'], required: true },
+  { key: 'opening_status', label: '개설상태', type: 'select', options: ['개설대기', '개설진행', '개설취소', '개설완료', '이행완료'], required: true, default: '개설대기' },
   // 선택 입력사항
-  { key: 'management_code', label: '관리코드' },
-  { key: 'build_type', label: '구축구분' },
-  { key: 'management_type', label: '관리구분' },
-  { key: 'construction_type', label: '구축형' },
+  { key: 'build_type', label: '구축구분', type: 'select', options: ['신규', '해지후재구축', '이행'] },
+  { key: 'management_type', label: '관리구분', type: 'select', options: ['정상', '해지', '취소'] },
+  { key: 'construction_type', label: '구축형', type: 'select', options: ['기본형', '연계형'] },
   { key: 'customer_contact_person', label: '고객담당자' },
   { key: 'customer_department', label: '담당 부서', type: 'select-other', options: ['인사팀', '재무팀', '전산팀'] },
   { key: 'contact_phone', label: '담당자 연락처' },
@@ -25,6 +24,7 @@ const CUSTOMER_FIELDS: { key: string; label: string; required?: boolean; type?: 
   { key: 'opening_date', label: '개설/이행일', type: 'date' },
   { key: 'connection_status', label: '연계상태', type: 'select', options: ['ERP연계대기', 'ERP연계진행', 'ERP연계완료', 'ERP청구완료', '연계청구보류'] },
   { key: 'connection_date', label: '연계일자', type: 'date' },
+  { key: 'termination_date', label: '해지일자', type: 'date' },
   { key: 'erp_company', label: 'ERP회사' },
   { key: 'erp_type', label: 'ERP 종류', type: 'select', options: ['영림원', 'Amaranth10', 'ERP10', '옴니이솔', 'IU', 'ICUBE', 'SAP', '오직', '디모데'] },
   { key: 'erp_db', label: 'ERP DB' },
@@ -34,7 +34,6 @@ const CUSTOMER_FIELDS: { key: string; label: string; required?: boolean; type?: 
   { key: 'customer_ip', label: '고객사 IP' },
   { key: 'sensitive_customer', label: '민감고객', type: 'select', options: ['Y', 'N'] },
   { key: 'intimacy', label: '친밀도', type: 'select', options: ['상', '중', '하'] },
-  { key: 'duplicate_check', label: '중복체크' },
 ]
 
 const TABLE_COLUMNS = [
@@ -44,7 +43,7 @@ const TABLE_COLUMNS = [
 
 const emptyForm = () => {
   const f: any = {}
-  CUSTOMER_FIELDS.forEach(({ key }) => (f[key] = ''))
+  CUSTOMER_FIELDS.forEach((field) => (f[field.key] = field.default || ''))
   return f
 }
 

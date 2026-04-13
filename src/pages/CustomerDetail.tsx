@@ -18,13 +18,11 @@ const FIELD_GROUPS: Record<string, { key: string; label: string; type?: string; 
     { key: 'customer_name', label: '고객명' },
     { key: 'business_number', label: '사업자번호' },
     { key: 'customer_number', label: '고객번호' },
-    { key: 'management_code', label: '관리코드' },
-    { key: 'build_type', label: '구축구분' },
-    { key: 'management_type', label: '관리구분' },
-    { key: 'construction_type', label: '구축형' },
+    { key: 'build_type', label: '구축구분', type: 'select', options: ['신규', '해지후재구축', '이행'] },
+    { key: 'management_type', label: '관리구분', type: 'select', options: ['정상', '해지', '취소'] },
+    { key: 'construction_type', label: '구축형', type: 'select', options: ['기본형', '연계형'] },
     { key: 'sensitive_customer', label: '민감고객', type: 'select', options: ['Y', 'N'] },
     { key: 'intimacy', label: '친밀도', type: 'select', options: ['상', '중', '하'] },
-    { key: 'duplicate_check', label: '중복체크' },
   ],
   'ERP정보': [
     { key: 'erp_company', label: 'ERP회사' },
@@ -48,6 +46,7 @@ const FIELD_GROUPS: Record<string, { key: string; label: string; type?: string; 
     { key: 'opening_date', label: '개설/이행일', type: 'date' },
     { key: 'connection_status', label: '연계상태', type: 'select', options: ['ERP연계대기', 'ERP연계진행', 'ERP연계완료', 'ERP청구완료', '연계청구보류'] },
     { key: 'connection_date', label: '연계일자', type: 'date' },
+    { key: 'termination_date', label: '해지일자', type: 'date' },
   ],
 }
 
@@ -555,7 +554,6 @@ export default function CustomerDetail() {
                   ['고객명', form.customer_name],
                   ['사업자번호', form.business_number],
                   ['고객번호', form.customer_number],
-                  ['관리코드', form.management_code],
                   ['구축구분', form.build_type],
                   ['관리구분', form.management_type],
                   ['구축형', form.construction_type],
@@ -565,6 +563,7 @@ export default function CustomerDetail() {
                   ['개설일', form.opening_date],
                   ['연계상태', form.connection_status],
                   ['연계일자', form.connection_date],
+                  ['해지일자', form.termination_date],
                   ['민감고객', form.sensitive_customer],
                   ['친밀도', form.intimacy],
                 ].map(([label, val]) => (
