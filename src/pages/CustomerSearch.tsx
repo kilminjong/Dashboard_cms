@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
-import { Search, User, Building2, Server, FileText, X, ChevronLeft } from 'lucide-react'
+import { Search, User, X, ChevronLeft } from 'lucide-react'
 
 export default function CustomerSearch() {
   const navigate = useNavigate()
@@ -148,15 +148,12 @@ export default function CustomerSearch() {
                 </div>
               </div>
 
-              {/* 상세 내용 */}
-              <div className="flex-1 overflow-y-auto p-5 space-y-5">
-                {/* 기본 정보 */}
-                <section>
-                  <div className="flex items-center gap-2 mb-3">
-                    <Building2 size={15} className="text-blue-600" />
-                    <span className="text-sm font-semibold text-gray-700">기본 정보</span>
-                  </div>
-                  <div className="bg-gray-50 rounded-lg overflow-hidden">
+              {/* 상세 내용 - 2열 그리드 */}
+              <div className="flex-1 overflow-y-auto p-4">
+                <div className="grid grid-cols-1 xl:grid-cols-2 gap-3">
+                  {/* 기본 정보 */}
+                  <div className="bg-gray-50 rounded-lg overflow-hidden border border-gray-100">
+                    <div className="bg-blue-50 px-3 py-1.5 border-b border-blue-100"><span className="text-xs font-semibold text-blue-700">기본 정보</span></div>
                     {[
                       ['고객명', selectedCustomer.customer_name],
                       ['고객번호', selectedCustomer.customer_number],
@@ -168,21 +165,16 @@ export default function CustomerSearch() {
                       ['민감고객', selectedCustomer.sensitive_customer],
                       ['친밀도', selectedCustomer.intimacy],
                     ].map(([label, val], i) => (
-                      <div key={label} className={`flex text-xs ${i % 2 === 0 ? 'bg-white' : 'bg-gray-50'}`}>
-                        <span className="px-3 py-2 w-24 shrink-0 font-medium text-gray-500 border-r border-gray-100">{label}</span>
-                        <span className="px-3 py-2 text-gray-800">{val || '-'}</span>
+                      <div key={label} className={`flex text-xs ${i % 2 === 0 ? 'bg-white' : 'bg-gray-50/70'}`}>
+                        <span className="px-2 py-1.5 w-20 shrink-0 font-medium text-gray-500 border-r border-gray-100">{label}</span>
+                        <span className="px-2 py-1.5 text-gray-800 truncate">{val || '-'}</span>
                       </div>
                     ))}
                   </div>
-                </section>
 
-                {/* 계약 현황 */}
-                <section>
-                  <div className="flex items-center gap-2 mb-3">
-                    <FileText size={15} className="text-amber-600" />
-                    <span className="text-sm font-semibold text-gray-700">계약 현황</span>
-                  </div>
-                  <div className="bg-gray-50 rounded-lg overflow-hidden">
+                  {/* 계약 현황 */}
+                  <div className="bg-gray-50 rounded-lg overflow-hidden border border-gray-100">
+                    <div className="bg-amber-50 px-3 py-1.5 border-b border-amber-100"><span className="text-xs font-semibold text-amber-700">계약 현황</span></div>
                     {[
                       ['신규접수일', selectedCustomer.reception_date],
                       ['개설상태', selectedCustomer.opening_status],
@@ -192,25 +184,18 @@ export default function CustomerSearch() {
                       ['해지일자', selectedCustomer.termination_date],
                       ['CMS IP', selectedCustomer.cms_ip],
                     ].map(([label, val], i) => (
-                      <div key={label} className={`flex text-xs ${i % 2 === 0 ? 'bg-white' : 'bg-gray-50'}`}>
-                        <span className="px-3 py-2 w-24 shrink-0 font-medium text-gray-500 border-r border-gray-100">{label}</span>
-                        <span className="px-3 py-2 text-gray-800">
-                          {label === '개설상태' && val ? (
-                            <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${statusBadge(val)}`}>{val}</span>
-                          ) : val || '-'}
+                      <div key={label} className={`flex text-xs ${i % 2 === 0 ? 'bg-white' : 'bg-gray-50/70'}`}>
+                        <span className="px-2 py-1.5 w-20 shrink-0 font-medium text-gray-500 border-r border-gray-100">{label}</span>
+                        <span className="px-2 py-1.5 text-gray-800">
+                          {label === '개설상태' && val ? <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-medium ${statusBadge(val)}`}>{val}</span> : val || '-'}
                         </span>
                       </div>
                     ))}
                   </div>
-                </section>
 
-                {/* ERP/서버 정보 */}
-                <section>
-                  <div className="flex items-center gap-2 mb-3">
-                    <Server size={15} className="text-purple-600" />
-                    <span className="text-sm font-semibold text-gray-700">ERP / 서버 정보</span>
-                  </div>
-                  <div className="bg-gray-50 rounded-lg overflow-hidden">
+                  {/* ERP/서버 정보 */}
+                  <div className="bg-gray-50 rounded-lg overflow-hidden border border-gray-100">
+                    <div className="bg-purple-50 px-3 py-1.5 border-b border-purple-100"><span className="text-xs font-semibold text-purple-700">ERP / 서버 정보</span></div>
                     {[
                       ['ERP회사', selectedCustomer.erp_company],
                       ['ERP종류', selectedCustomer.erp_type],
@@ -221,34 +206,29 @@ export default function CustomerSearch() {
                       ['고객사 IP', selectedCustomer.customer_ip],
                       ['CMS IP', selectedCustomer.cms_ip],
                     ].map(([label, val], i) => (
-                      <div key={label} className={`flex text-xs ${i % 2 === 0 ? 'bg-white' : 'bg-gray-50'}`}>
-                        <span className="px-3 py-2 w-24 shrink-0 font-medium text-gray-500 border-r border-gray-100">{label}</span>
-                        <span className="px-3 py-2 text-gray-800">{val || '-'}</span>
+                      <div key={label} className={`flex text-xs ${i % 2 === 0 ? 'bg-white' : 'bg-gray-50/70'}`}>
+                        <span className="px-2 py-1.5 w-20 shrink-0 font-medium text-gray-500 border-r border-gray-100">{label}</span>
+                        <span className="px-2 py-1.5 text-gray-800 truncate">{val || '-'}</span>
                       </div>
                     ))}
                   </div>
-                </section>
 
-                {/* 담당자 정보 */}
-                <section>
-                  <div className="flex items-center gap-2 mb-3">
-                    <User size={15} className="text-emerald-600" />
-                    <span className="text-sm font-semibold text-gray-700">담당자 정보</span>
-                  </div>
-                  <div className="bg-gray-50 rounded-lg overflow-hidden">
+                  {/* 담당자 정보 */}
+                  <div className="bg-gray-50 rounded-lg overflow-hidden border border-gray-100">
+                    <div className="bg-emerald-50 px-3 py-1.5 border-b border-emerald-100"><span className="text-xs font-semibold text-emerald-700">담당자 정보</span></div>
                     {[
                       ['고객담당자', selectedCustomer.customer_contact_person],
                       ['담당부서', selectedCustomer.customer_department],
                       ['연락처', selectedCustomer.contact_phone],
                       ['이메일', selectedCustomer.contact_email],
                     ].map(([label, val], i) => (
-                      <div key={label} className={`flex text-xs ${i % 2 === 0 ? 'bg-white' : 'bg-gray-50'}`}>
-                        <span className="px-3 py-2 w-24 shrink-0 font-medium text-gray-500 border-r border-gray-100">{label}</span>
-                        <span className="px-3 py-2 text-gray-800">{val || '-'}</span>
+                      <div key={label} className={`flex text-xs ${i % 2 === 0 ? 'bg-white' : 'bg-gray-50/70'}`}>
+                        <span className="px-2 py-1.5 w-20 shrink-0 font-medium text-gray-500 border-r border-gray-100">{label}</span>
+                        <span className="px-2 py-1.5 text-gray-800 truncate">{val || '-'}</span>
                       </div>
                     ))}
                   </div>
-                </section>
+                </div>
               </div>
             </div>
           ) : (
