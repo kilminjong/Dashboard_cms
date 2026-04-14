@@ -79,8 +79,8 @@ export default function Customers() {
   const [filterOpeningFrom, setFilterOpeningFrom] = useState('')
   const [filterOpeningTo, setFilterOpeningTo] = useState('')
 
-  // 정렬
-  const [sortKey, setSortKey] = useState<string>('created_at')
+  // 정렬 (접수일자 기준 내림차순 기본)
+  const [sortKey, setSortKey] = useState<string>('reception_date')
   const [sortAsc, setSortAsc] = useState(false)
 
   // 페이지네이션
@@ -247,6 +247,12 @@ export default function Customers() {
     }
     setShowModal(false)
     loadCustomers()
+  }
+
+  // 리스트에서 직접 상태 변경
+  const handleInlineChange = async (id: string, field: string, value: string) => {
+    await supabase.from('customers').update({ [field]: value, updated_at: new Date().toISOString() }).eq('id', id)
+    setCustomers((prev) => prev.map((c) => c.id === id ? { ...c, [field]: value } : c))
   }
 
   const handleDelete = async (id: string) => {
@@ -565,9 +571,31 @@ export default function Customers() {
                             {(c as any)[col]}
                           </a>
                         ) : col === 'opening_status' ? (
-                          <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${statusBadge((c as any)[col])}`}>
-                            {(c as any)[col] || '-'}
-                          </span>
+                          <select
+                            value={(c as any)[col] || ''}
+                            onChange={(e) => { e.stopPropagation(); handleInlineChange(c.id, 'opening_status', e.target.value) }}
+                            className={`px-2 py-0.5 rounded-full text-xs font-medium border-0 cursor-pointer ${statusBadge((c as any)[col])} focus:ring-2 focus:ring-emerald-500 outline-none`}
+                          >
+                            {['개설대기', '개설진행', '개설취소', '개설완료', '이행완료'].map((s) => <option key={s} value={s}>{s}</option>)}
+                          </select>
+                        ) : col === 'connection_status' ? (
+                          <select
+                            value={(c as any)[col] || ''}
+                            onChange={(e) => { e.stopPropagation(); handleInlineChange(c.id, 'connection_status', e.target.value) }}
+                            className="px-1 py-0.5 text-xs border border-gray-200 rounded bg-white cursor-pointer focus:ring-2 focus:ring-emerald-500 outline-none"
+                          >
+                            <option value="">-</option>
+                            {['ERP연계대기', 'ERP연계진행', 'ERP연계완료', 'ERP청구완료', '연계청구보류'].map((s) => <option key={s} value={s}>{s}</option>)}
+                          </select>
+                        ) : col === 'manager' ? (
+                          <select
+                            value={(c as any)[col] || ''}
+                            onChange={(e) => { e.stopPropagation(); handleInlineChange(c.id, 'manager', e.target.value) }}
+                            className="px-1 py-0.5 text-xs border border-gray-200 rounded bg-white cursor-pointer focus:ring-2 focus:ring-emerald-500 outline-none"
+                          >
+                            <option value="">-</option>
+                            {filterOptions.managers.map((m) => <option key={m} value={m}>{m}</option>)}
+                          </select>
                         ) : (
                           (c as any)[col] || '-'
                         )}
