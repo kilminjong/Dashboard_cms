@@ -38,7 +38,7 @@ const CUSTOMER_FIELDS: { key: string; label: string; required?: boolean; type?: 
 
 const TABLE_COLUMNS = [
   'customer_name', 'customer_number', 'business_number', 'manager', 'opening_status',
-  'connection_status', 'erp_company',
+  'connection_status', 'connection_date', 'termination_date', 'erp_company',
 ]
 
 const emptyForm = () => {
@@ -547,9 +547,9 @@ export default function Customers() {
             </thead>
             <tbody className="divide-y divide-gray-100">
               {loading ? (
-                <tr><td colSpan={8} className="text-center py-8 text-gray-400">불러오는 중...</td></tr>
+                <tr><td colSpan={10} className="text-center py-8 text-gray-400">불러오는 중...</td></tr>
               ) : paged.length === 0 ? (
-                <tr><td colSpan={8} className="text-center py-8 text-gray-400">데이터가 없습니다</td></tr>
+                <tr><td colSpan={10} className="text-center py-8 text-gray-400">데이터가 없습니다</td></tr>
               ) : (
                 paged.map((c) => (
                   <tr key={c.id} className="hover:bg-gray-50">
@@ -596,6 +596,13 @@ export default function Customers() {
                             <option value="">-</option>
                             {filterOptions.managers.map((m) => <option key={m} value={m}>{m}</option>)}
                           </select>
+                        ) : col === 'connection_date' ? (
+                          <input
+                            type="date"
+                            value={(c as any)[col] || ''}
+                            onChange={(e) => { e.stopPropagation(); handleInlineChange(c.id, 'connection_date', e.target.value || null as any) }}
+                            className="px-1 py-0.5 text-xs border border-gray-200 rounded bg-white cursor-pointer focus:ring-2 focus:ring-emerald-500 outline-none w-[110px]"
+                          />
                         ) : (
                           (c as any)[col] || '-'
                         )}

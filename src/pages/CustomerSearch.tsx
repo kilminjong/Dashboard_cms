@@ -190,6 +190,7 @@ export default function CustomerSearch() {
                       ['연계상태', selectedCustomer.connection_status],
                       ['연계일자', selectedCustomer.connection_date],
                       ['해지일자', selectedCustomer.termination_date],
+                      ['CMS IP', selectedCustomer.cms_ip],
                     ].map(([label, val], i) => (
                       <div key={label} className={`flex text-xs ${i % 2 === 0 ? 'bg-white' : 'bg-gray-50'}`}>
                         <span className="px-3 py-2 w-24 shrink-0 font-medium text-gray-500 border-r border-gray-100">{label}</span>
@@ -218,6 +219,7 @@ export default function CustomerSearch() {
                       ['서버위치', selectedCustomer.server_location],
                       ['스케줄사용', selectedCustomer.schedule_use],
                       ['고객사 IP', selectedCustomer.customer_ip],
+                      ['CMS IP', selectedCustomer.cms_ip],
                     ].map(([label, val], i) => (
                       <div key={label} className={`flex text-xs ${i % 2 === 0 ? 'bg-white' : 'bg-gray-50'}`}>
                         <span className="px-3 py-2 w-24 shrink-0 font-medium text-gray-500 border-r border-gray-100">{label}</span>

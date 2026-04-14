@@ -31,6 +31,7 @@ const FIELD_GROUPS: Record<string, { key: string; label: string; type?: string; 
     { key: 'server_location', label: '서버PC 상세위치', type: 'select-other', options: ['내부', '전산실'] },
     { key: 'schedule_use', label: '스케줄사용여부', type: 'select', options: ['Y', 'N'] },
     { key: 'customer_ip', label: '고객사 IP' },
+    { key: 'cms_ip', label: 'CMS IP' },
   ],
   '담당자': [
     { key: 'customer_contact_person', label: '고객담당자' },
@@ -171,7 +172,7 @@ export default function CustomerDetail() {
             ['담당자', form.manager], ['접수일', form.reception_date],
             ['개설상태', form.opening_status], ['개설일', form.opening_date],
             ['연계상태', form.connection_status], ['연계일자', form.connection_date],
-            ['해지일자', form.termination_date], ['민감고객', form.sensitive_customer], ['친밀도', form.intimacy],
+            ['해지일자', form.termination_date], ['CMS IP', form.cms_ip], ['민감고객', form.sensitive_customer], ['친밀도', form.intimacy],
           ].map(([label, val], i) => (
             <div key={label} className={`flex ${i % 2 === 0 ? 'bg-white' : 'bg-gray-50'}`}>
               <span className="px-3 py-2 w-24 shrink-0 font-medium text-gray-500 border-r border-gray-100">{label}</span>
@@ -188,7 +189,7 @@ export default function CustomerDetail() {
           {[
             ['ERP회사', form.erp_company], ['ERP종류', form.erp_type], ['ERP DB', form.erp_db],
             ['연계방식', form.connection_method], ['서버위치', form.server_location],
-            ['스케줄사용', form.schedule_use], ['고객사 IP', form.customer_ip],
+            ['스케줄사용', form.schedule_use], ['고객사 IP', form.customer_ip], ['CMS IP', form.cms_ip],
           ].map(([label, val], i) => (
             <div key={label} className={`flex ${i % 2 === 0 ? 'bg-white' : 'bg-gray-50'}`}>
               <span className="px-3 py-2 w-24 shrink-0 font-medium text-gray-500 border-r border-gray-100">{label}</span>
