@@ -37,7 +37,7 @@ const CUSTOMER_FIELDS: { key: string; label: string; required?: boolean; type?: 
 ]
 
 const TABLE_COLUMNS = [
-  'customer_name', 'customer_number', 'business_number', 'manager', 'opening_status',
+  'customer_name', 'customer_number', 'business_number', 'manager', 'opening_status', 'opening_date',
   'connection_status', 'connection_date', 'termination_date', 'erp_company',
 ]
 
@@ -547,9 +547,9 @@ export default function Customers() {
             </thead>
             <tbody className="divide-y divide-gray-100">
               {loading ? (
-                <tr><td colSpan={10} className="text-center py-8 text-gray-400">불러오는 중...</td></tr>
+                <tr><td colSpan={11} className="text-center py-8 text-gray-400">불러오는 중...</td></tr>
               ) : paged.length === 0 ? (
-                <tr><td colSpan={10} className="text-center py-8 text-gray-400">데이터가 없습니다</td></tr>
+                <tr><td colSpan={11} className="text-center py-8 text-gray-400">데이터가 없습니다</td></tr>
               ) : (
                 paged.map((c) => (
                   <tr key={c.id} className="hover:bg-gray-50">
