@@ -4,7 +4,7 @@ import { useAuth } from '../hooks/useAuth'
 import { useNavigate } from 'react-router-dom'
 import { Users, UserCheck, Calendar, Sparkles, RefreshCw, Clock, XCircle, UserCircle, X } from 'lucide-react'
 import {
-  PieChart, Pie, Cell, ResponsiveContainer, Tooltip,
+  ResponsiveContainer, Tooltip,
   XAxis, YAxis, CartesianGrid,
   BarChart, Bar,
 } from 'recharts'
@@ -23,18 +23,6 @@ interface MonthlyData {
   count: number
 }
 
-interface StatusData {
-  name: string
-  value: number
-  color: string
-}
-
-const STATUS_COLORS: Record<string, string> = {
-  '개설완료': '#059669',
-  '개설대기': '#f59e0b',
-  '개설진행': '#3b82f6',
-  '개설취소': '#ef4444',
-}
 
 interface MyStats {
   total: number
@@ -57,12 +45,12 @@ export default function Dashboard() {
   })
   const [recentCustomers, setRecentCustomers] = useState<any[]>([])
   const [monthlyData, setMonthlyData] = useState<MonthlyData[]>([])
-  const [statusData, setStatusData] = useState<StatusData[]>([])
   const [myStats, setMyStats] = useState<MyStats>({ total: 0, opened: 0, waiting: 0, progress: 0, canceled: 0 })
   const [myRecentCustomers, setMyRecentCustomers] = useState<any[]>([])
   const [allCustomers, setAllCustomers] = useState<any[]>([])
   const [todayScheduleList, setTodayScheduleList] = useState<any[]>([])
   const [cardModal, setCardModal] = useState<{ type: string; title: string; data: any[] } | null>(null)
+  const [monthlyAssignment, setMonthlyAssignment] = useState<{ name: string; total: number; linked: number }[]>([])
   const [aiSummary, setAiSummary] = useState('')
   const [aiLoading, setAiLoading] = useState(false)
 
@@ -97,10 +85,11 @@ export default function Dashboard() {
   }
 
   const loadStats = async () => {
-    const today = new Date().toISOString().split('T')[0]
+    const now = new Date()
+    const today = now.toISOString().split('T')[0]
 
     const [customers, schedules, todaySchedules] = await Promise.all([
-      supabase.from('customers').select('opening_status, manager, customer_name, business_number, customer_number, created_at, reception_date, id').range(0, 9999),
+      supabase.from('customers').select('opening_status, manager, customer_name, business_number, customer_number, created_at, reception_date, construction_type, id').range(0, 9999),
       supabase.from('schedules').select('id', { count: 'exact', head: true })
         .eq('start_date', today),
       supabase.from('schedules').select('id, title, description, start_time, end_time, is_done')
@@ -126,12 +115,6 @@ export default function Dashboard() {
       todaySchedules: schedules.count || 0,
     })
 
-    setStatusData([
-      { name: '개설완료', value: opened, color: STATUS_COLORS['개설완료'] },
-      { name: '개설대기', value: waiting, color: STATUS_COLORS['개설대기'] },
-      { name: '개설진행', value: progress, color: STATUS_COLORS['개설진행'] },
-      { name: '개설취소', value: canceled, color: STATUS_COLORS['개설취소'] },
-    ])
 
     // 내 담당 고객 현황 (profile 또는 auth metadata에서 이름 가져옴)
     const { data: { user: authUser } } = await supabase.auth.getUser()
@@ -152,6 +135,22 @@ export default function Dashboard() {
           .slice(0, 5)
       )
     }
+
+    // 당월 담당자 배정 현황
+    const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
+    const thisMonthCustomers = list.filter((c) => c.reception_date?.startsWith(currentMonth))
+    const assignMap: Record<string, { total: number; linked: number }> = {}
+    thisMonthCustomers.forEach((c) => {
+      const mgr = c.manager || '미배정'
+      if (!assignMap[mgr]) assignMap[mgr] = { total: 0, linked: 0 }
+      assignMap[mgr].total++
+      if (c.construction_type === '연계형') assignMap[mgr].linked++
+    })
+    setMonthlyAssignment(
+      Object.entries(assignMap)
+        .map(([name, d]) => ({ name, total: d.total, linked: d.linked }))
+        .sort((a, b) => b.total - a.total)
+    )
   }
 
   const loadRecentCustomers = async () => {
@@ -283,9 +282,6 @@ export default function Dashboard() {
     { label: '오늘 일정', value: stats.todaySchedules, icon: Calendar, color: 'bg-purple-500' },
   ]
 
-  const openedRate = stats.totalCustomers > 0
-    ? Math.round((stats.openedCustomers / stats.totalCustomers) * 100)
-    : 0
 
   const statusBadgeColor = (status: string) => {
     const cat = categorizeStatus(status)
@@ -421,47 +417,43 @@ export default function Dashboard() {
 
       {/* 차트 영역 */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
-        {/* 도넛 차트 - 개설 현황 (4분류) */}
+        {/* 당월 담당자 배정 현황 */}
         <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
-          <h3 className="font-semibold text-gray-800 mb-4">개설 현황</h3>
-          <div className="flex items-center">
-            <div className="w-1/2">
-              <ResponsiveContainer width="100%" height={200}>
-                <PieChart>
-                  <Pie
-                    data={statusData}
-                    cx="50%"
-                    cy="50%"
-                    innerRadius={55}
-                    outerRadius={80}
-                    paddingAngle={3}
-                    dataKey="value"
-                    strokeWidth={0}
-                  >
-                    {statusData.map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={entry.color} />
-                    ))}
-                  </Pie>
-                  <Tooltip formatter={(value) => `${Number(value).toLocaleString()}건`} />
-                </PieChart>
-              </ResponsiveContainer>
-            </div>
-            <div className="w-1/2 space-y-3">
-              <div className="text-center mb-3">
-                <p className="text-3xl font-bold text-emerald-600">{openedRate}%</p>
-                <p className="text-sm text-gray-500">개설 완료율</p>
-              </div>
-              {statusData.map((s) => (
-                <div key={s.name} className="flex items-center gap-2">
-                  <div className="w-3 h-3 rounded-full" style={{ backgroundColor: s.color }}></div>
-                  <span className="text-sm text-gray-600">{s.name} {s.value.toLocaleString()}건</span>
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="font-semibold text-gray-800">당월 담당자 배정 현황</h3>
+            <span className="text-xs text-gray-400">{new Date().getMonth() + 1}월 기준</span>
+          </div>
+          {monthlyAssignment.length === 0 ? (
+            <p className="text-center py-8 text-gray-300 text-sm">이번 달 배정된 고객이 없습니다.</p>
+          ) : (
+            <div className="space-y-2">
+              {monthlyAssignment.map((item) => (
+                <div key={item.name} className="flex items-center justify-between bg-gray-50 rounded-lg px-4 py-3">
+                  <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 rounded-full bg-emerald-600 flex items-center justify-center text-white text-xs font-bold shrink-0">
+                      {item.name[0]}
+                    </div>
+                    <span className="text-sm font-medium text-gray-800">{item.name}</span>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <div className="text-right">
+                      <p className="text-lg font-bold text-gray-800">{item.total}<span className="text-xs font-normal text-gray-400 ml-0.5">건</span></p>
+                    </div>
+                    {item.linked > 0 && (
+                      <span className="px-2 py-0.5 bg-blue-100 text-blue-700 rounded-full text-xs font-medium">연계형 {item.linked}건</span>
+                    )}
+                  </div>
                 </div>
               ))}
+              <div className="flex items-center justify-between pt-2 border-t border-gray-100 mt-2">
+                <span className="text-sm font-semibold text-gray-600">합계</span>
+                <span className="text-sm font-bold text-gray-800">{monthlyAssignment.reduce((s, i) => s + i.total, 0)}건</span>
+              </div>
             </div>
-          </div>
+          )}
         </div>
 
-        {/* 라인 차트 - 월별 신규 인입 추이 (reception_date 기준) */}
+        {/* 월별 신규 인입 추이 */}
         <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
           <h3 className="font-semibold text-gray-800 mb-1">월별 신규 인입 추이</h3>
           <p className="text-xs text-gray-400 mb-4">신규접수일(reception_date) 기준 · 최근 12개월</p>
@@ -500,8 +492,8 @@ export default function Dashboard() {
                 <tr><td colSpan={5} className="text-center py-8 text-gray-400">등록된 고객이 없습니다</td></tr>
               ) : (
                 recentCustomers.map((c) => (
-                  <tr key={c.id} className="hover:bg-gray-50">
-                    <td className="px-6 py-4 font-medium text-gray-800">{c.customer_name}</td>
+                  <tr key={c.id} className="hover:bg-gray-50 cursor-pointer" onClick={() => navigate(`/customers/${c.id}`)}>
+                    <td className="px-6 py-4 font-medium text-emerald-600 hover:underline">{c.customer_name}</td>
                     <td className="px-6 py-4 text-gray-600">{c.business_number || '-'}</td>
                     <td className="px-6 py-4">
                       <span className={`px-2 py-1 rounded-full text-xs font-medium ${statusBadgeColor(c.opening_status)}`}>
@@ -525,9 +517,9 @@ export default function Dashboard() {
             <p className="text-center py-8 text-gray-400">등록된 고객이 없습니다</p>
           ) : (
             recentCustomers.map((c) => (
-              <div key={c.id} className="p-4">
+              <div key={c.id} className="p-4 cursor-pointer hover:bg-gray-50 transition" onClick={() => navigate(`/customers/${c.id}`)}>
                 <div className="flex items-center justify-between mb-1">
-                  <span className="font-medium text-gray-800">{c.customer_name}</span>
+                  <span className="font-medium text-emerald-600">{c.customer_name}</span>
                   <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${statusBadgeColor(c.opening_status)}`}>
                     {c.opening_status || '미정'}
                   </span>
