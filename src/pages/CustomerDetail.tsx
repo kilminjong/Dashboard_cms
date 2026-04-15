@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import type { Customer, CustomerMemo, CustomerHistory } from '../types'
-import { ArrowLeft, Save, Plus, Sparkles, RefreshCw, Clock, Trash2, Edit2 } from 'lucide-react'
+import { ArrowLeft, Save, Plus, Sparkles, RefreshCw, Clock, Trash2, Edit2, Upload, Image } from 'lucide-react'
 
 const FIELD_GROUPS: Record<string, { key: string; label: string; type?: string; options?: string[] }[]> = {
   '기본정보': [
@@ -13,6 +13,7 @@ const FIELD_GROUPS: Record<string, { key: string; label: string; type?: string; 
     { key: 'management_type', label: '관리구분', type: 'select', options: ['정상', '해지', '취소'] },
     { key: 'construction_type', label: '구축형', type: 'select', options: ['기본형', '연계형'] },
     { key: 'manager', label: '담당자' },
+    { key: 'address', label: '주소' },
     { key: 'sensitive_customer', label: '민감고객', type: 'select', options: ['Y', 'N'] },
     { key: 'intimacy', label: '친밀도', type: 'select', options: ['상', '중', '하'] },
     // 계약현황 통합
@@ -74,6 +75,7 @@ export default function CustomerDetail() {
   const [history, setHistory] = useState<CustomerHistory[]>([])
 
   const [activeSection, setActiveSection] = useState<'info' | 'memo'>('info')
+  const [cardUploading, setCardUploading] = useState(false)
 
   useEffect(() => {
     if (id) { loadCustomer(); loadMemos(); loadHistory() }
@@ -157,6 +159,51 @@ export default function CustomerDetail() {
     setAiMemoLoading(false)
   }
 
+  // 명함 이미지 압축 + 업로드
+  const compressAndUpload = async (file: File): Promise<string | null> => {
+    return new Promise((resolve) => {
+      const img = new window.Image()
+      img.onload = async () => {
+        const canvas = document.createElement('canvas')
+        const MAX_WIDTH = 800
+        const scale = Math.min(1, MAX_WIDTH / img.width)
+        canvas.width = img.width * scale
+        canvas.height = img.height * scale
+        const ctx = canvas.getContext('2d')!
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height)
+
+        canvas.toBlob(async (blob) => {
+          if (!blob) { resolve(null); return }
+          const safeName = `card_${Date.now()}_${Math.random().toString(36).slice(2, 8)}.jpg`
+          const { error } = await supabase.storage.from('business-cards').upload(safeName, blob, { contentType: 'image/jpeg', cacheControl: '3600' })
+          if (error) { alert('명함 업로드 실패: ' + error.message); resolve(null); return }
+          const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
+          resolve(`${supabaseUrl}/storage/v1/object/public/business-cards/${safeName}`)
+        }, 'image/jpeg', 0.7)
+      }
+      img.src = URL.createObjectURL(file)
+    })
+  }
+
+  const handleCardUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file || !customer) return
+    setCardUploading(true)
+    const url = await compressAndUpload(file)
+    if (url) {
+      await supabase.from('customers').update({ business_card_url: url }).eq('id', customer.id)
+      loadCustomer()
+    }
+    setCardUploading(false)
+    e.target.value = ''
+  }
+
+  const handleCardDelete = async () => {
+    if (!customer || !confirm('명함을 삭제하시겠습니까?')) return
+    await supabase.from('customers').update({ business_card_url: '' }).eq('id', customer.id)
+    loadCustomer()
+  }
+
   if (loading) return <div className="flex items-center justify-center py-20"><RefreshCw size={24} className="animate-spin text-emerald-500" /></div>
   if (!customer) return <div className="text-center py-20"><p className="text-gray-400 mb-4">고객 정보를 찾을 수 없습니다.</p><button onClick={() => navigate('/customers')} className="text-emerald-600 hover:underline text-sm">목록으로</button></div>
 
@@ -169,7 +216,7 @@ export default function CustomerDetail() {
           {[
             ['고객명', form.customer_name], ['사업자번호', form.business_number], ['고객번호', form.customer_number],
             ['구축구분', form.build_type], ['관리구분', form.management_type], ['구축형', form.construction_type],
-            ['담당자', form.manager], ['접수일', form.reception_date],
+            ['담당자', form.manager], ['주소', form.address], ['접수일', form.reception_date],
             ['개설상태', form.opening_status], ['개설일', form.opening_date],
             ['연계상태', form.connection_status], ['연계일자', form.connection_date],
             ['해지일자', form.termination_date], ['CMS IP', form.cms_ip], ['민감고객', form.sensitive_customer], ['친밀도', form.intimacy],
@@ -252,6 +299,34 @@ export default function CustomerDetail() {
         <>
           {/* 전체현황 (상단 바로 표시) */}
           {!editing && renderOverview()}
+
+          {/* 명함 */}
+          {!editing && (
+            <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 mb-4">
+              <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center gap-2">
+                  <Image size={15} className="text-gray-500" />
+                  <span className="text-sm font-semibold text-gray-700">담당자 명함</span>
+                </div>
+                <label className={`flex items-center gap-1.5 px-3 py-1.5 bg-blue-50 border border-blue-200 text-blue-700 rounded-lg text-xs cursor-pointer hover:bg-blue-100 transition ${cardUploading ? 'opacity-50 pointer-events-none' : ''}`}>
+                  <Upload size={13} /> {cardUploading ? '업로드 중...' : '명함 업로드'}
+                  <input type="file" accept="image/*" onChange={handleCardUpload} className="hidden" />
+                </label>
+              </div>
+              {(customer as any).business_card_url ? (
+                <div className="relative group">
+                  <a href={(customer as any).business_card_url} target="_blank" rel="noopener noreferrer">
+                    <img src={(customer as any).business_card_url} alt="명함" className="rounded-lg border border-gray-200 max-h-[200px] w-auto" />
+                  </a>
+                  <button onClick={handleCardDelete} className="absolute top-2 right-2 p-1.5 bg-red-500 text-white rounded-lg opacity-0 group-hover:opacity-100 transition text-xs">
+                    <Trash2 size={13} />
+                  </button>
+                </div>
+              ) : (
+                <p className="text-xs text-gray-300 py-4 text-center">등록된 명함이 없습니다.</p>
+              )}
+            </div>
+          )}
 
           {/* 수정 버튼 */}
           {!editing && (

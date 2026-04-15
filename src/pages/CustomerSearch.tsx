@@ -164,6 +164,7 @@ export default function CustomerSearch() {
                       ['구축형', selectedCustomer.construction_type],
                       ['민감고객', selectedCustomer.sensitive_customer],
                       ['친밀도', selectedCustomer.intimacy],
+                      ['주소', selectedCustomer.address],
                     ].map(([label, val], i) => (
                       <div key={label} className={`flex text-xs ${i % 2 === 0 ? 'bg-white' : 'bg-gray-50/70'}`}>
                         <span className="px-2 py-1.5 w-20 shrink-0 font-medium text-gray-500 border-r border-gray-100">{label}</span>
@@ -228,6 +229,17 @@ export default function CustomerSearch() {
                       </div>
                     ))}
                   </div>
+                  {/* 명함 */}
+                  {selectedCustomer.business_card_url && (
+                    <div className="bg-gray-50 rounded-lg overflow-hidden border border-gray-100 col-span-1 xl:col-span-2">
+                      <div className="bg-gray-100 px-3 py-1.5 border-b border-gray-200"><span className="text-xs font-semibold text-gray-600">담당자 명함</span></div>
+                      <div className="p-3">
+                        <a href={selectedCustomer.business_card_url} target="_blank" rel="noopener noreferrer">
+                          <img src={selectedCustomer.business_card_url} alt="명함" className="rounded-lg max-h-[150px] w-auto" />
+                        </a>
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
