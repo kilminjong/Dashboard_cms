@@ -6,6 +6,8 @@ import { Plus, Search, Edit2, Trash2, X, Upload, FileSpreadsheet, ChevronUp, Che
 import * as XLSX from 'xlsx'
 
 const CUSTOMER_FIELDS: { key: string; label: string; required?: boolean; type?: string; options?: string[]; default?: string }[] = [
+  // 관리코드 (자동생성)
+  { key: 'management_code', label: '관리코드' },
   // 필수 입력사항 (상단 배치)
   { key: 'customer_name', label: '고객명', required: true },
   { key: 'business_number', label: '사업자번호', required: true },
@@ -37,7 +39,7 @@ const CUSTOMER_FIELDS: { key: string; label: string; required?: boolean; type?: 
 ]
 
 const TABLE_COLUMNS = [
-  'customer_name', 'customer_number', 'business_number', 'manager', 'opening_status', 'opening_date',
+  'management_code', 'customer_name', 'customer_number', 'business_number', 'manager', 'opening_status', 'opening_date',
   'connection_status', 'connection_date', 'termination_date', 'erp_company',
 ]
 
@@ -192,9 +194,18 @@ export default function Customers() {
       : <ChevronDown size={12} className="text-emerald-600" />
   }
 
-  const openCreate = () => {
+  const openCreate = async () => {
     setEditingCustomer(null)
-    setForm(emptyForm())
+    const f = emptyForm()
+    // 관리코드 자동 생성
+    try {
+      const { getMaxCode } = await import('../lib/googleSheets')
+      const maxCode = await getMaxCode()
+      const year = new Date().getFullYear().toString().slice(-2)
+      const nextCode = maxCode >= parseInt(year + '000') ? maxCode + 1 : parseInt(year + '001')
+      f.management_code = String(nextCode)
+    } catch { /* 실패해도 수동 입력 가능 */ }
+    setForm(f)
     setShowModal(true)
   }
 
@@ -581,9 +592,9 @@ export default function Customers() {
             </thead>
             <tbody className="divide-y divide-gray-100">
               {loading ? (
-                <tr><td colSpan={11} className="text-center py-8 text-gray-400">불러오는 중...</td></tr>
+                <tr><td colSpan={12} className="text-center py-8 text-gray-400">불러오는 중...</td></tr>
               ) : paged.length === 0 ? (
-                <tr><td colSpan={11} className="text-center py-8 text-gray-400">데이터가 없습니다</td></tr>
+                <tr><td colSpan={12} className="text-center py-8 text-gray-400">데이터가 없습니다</td></tr>
               ) : (
                 paged.map((c) => (
                   <tr key={c.id} className="hover:bg-gray-50">
@@ -793,13 +804,20 @@ export default function Customers() {
                               />
                             )}
                           </div>
+                        ) : field.key === 'management_code' ? (
+                          <input
+                            type="text"
+                            value={form[field.key]}
+                            readOnly
+                            className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm bg-gray-100 text-gray-500 cursor-not-allowed"
+                            title="관리코드는 자동 생성됩니다"
+                          />
                         ) : (
                           <input
                             type={field.type || 'text'}
                             value={form[field.key]}
                             onChange={(e) => {
                               let val = e.target.value
-                              // 사업자번호/고객번호는 숫자만 허용
                               if (field.key === 'business_number' || field.key === 'customer_number') {
                                 val = val.replace(/[^0-9]/g, '')
                               }
