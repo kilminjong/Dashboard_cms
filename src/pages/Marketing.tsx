@@ -148,7 +148,7 @@ export default function Marketing() {
       </div>
 
       {/* 상품별 요약 */}
-      <div className="grid grid-cols-3 gap-3 mb-5">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-5">
         {productStats.map((p) => (
           <div key={p.name} className="bg-white rounded-xl p-4 shadow-sm border border-gray-100">
             <p className="text-sm font-semibold text-gray-700 mb-2">{p.name}</p>
@@ -178,7 +178,7 @@ export default function Marketing() {
         </select>
       </div>
 
-      <div className="flex gap-4 h-[calc(100vh-22rem)]">
+      <div className="flex gap-4 h-[calc(100vh-20rem)] sm:h-[calc(100vh-22rem)]">
         {/* 좌측: 목록 */}
         <div className={`${selectedLead ? 'hidden lg:flex' : 'flex'} flex-col w-full lg:w-[360px] shrink-0`}>
           <p className="text-xs text-gray-400 mb-2">{filtered.length}건</p>

@@ -61,7 +61,7 @@ export default function CustomerSearch() {
         <span className="text-sm text-gray-400">전체 {customers.length.toLocaleString()}건</span>
       </div>
 
-      <div className="flex gap-4 h-[calc(100vh-14rem)]">
+      <div className="flex gap-4 h-[calc(100vh-12rem)] sm:h-[calc(100vh-14rem)]">
         {/* 좌측: 고객 목록 */}
         <div className={`${showDetail ? 'hidden lg:flex' : 'flex'} flex-col w-full lg:w-[380px] shrink-0`}>
           {/* 검색 */}

@@ -1,8 +1,8 @@
 import { useEffect, useState, useRef, useMemo, Fragment } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
-import type { Customer } from '../types'
-import { Plus, Search, Edit2, Trash2, X, Upload, FileSpreadsheet, ChevronUp, ChevronDown, RotateCcw } from 'lucide-react'
+import { fetchCustomers, appendCustomer, updateCustomer, deleteCustomer } from '../lib/googleSheets'
+import { Plus, Search, Edit2, Trash2, X, Upload, FileSpreadsheet, ChevronUp, ChevronDown, RotateCcw, RefreshCw } from 'lucide-react'
 import * as XLSX from 'xlsx'
 
 const CUSTOMER_FIELDS: { key: string; label: string; required?: boolean; type?: string; options?: string[]; default?: string }[] = [
@@ -49,10 +49,10 @@ const emptyForm = () => {
 
 export default function Customers() {
   const navigate = useNavigate()
-  const [customers, setCustomers] = useState<Customer[]>([])
+  const [customers, setCustomers] = useState<any[]>([])
   const [search, setSearch] = useState('')
   const [showModal, setShowModal] = useState(false)
-  const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null)
+  const [editingCustomer, setEditingCustomer] = useState<any | null>(null)
   const [form, setForm] = useState<any>(emptyForm())
   const [loading, setLoading] = useState(true)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -91,13 +91,16 @@ export default function Customers() {
     loadCustomers()
   }, [])
 
+  const [syncing, setSyncing] = useState(false)
+
   const loadCustomers = async () => {
-    const { data } = await supabase
-      .from('customers')
-      .select('*', { count: 'exact' })
-      .order('created_at', { ascending: false })
-      .range(0, 9999)
-    setCustomers(data || [])
+    try {
+      const data = await fetchCustomers()
+      setCustomers(data || [])
+    } catch (err: any) {
+      console.error('고객 데이터 로드 실패:', err)
+      alert('고객 데이터를 불러오지 못했습니다: ' + err.message)
+    }
     setLoading(false)
   }
 
@@ -195,7 +198,7 @@ export default function Customers() {
     setShowModal(true)
   }
 
-  const openEdit = (customer: Customer) => {
+  const openEdit = (customer: any) => {
     setEditingCustomer(customer)
     const f: any = {}
     CUSTOMER_FIELDS.forEach(({ key }) => (f[key] = (customer as any)[key] || ''))
@@ -234,32 +237,46 @@ export default function Customers() {
       }
     })
 
-    if (editingCustomer) {
-      const { error } = await supabase
-        .from('customers')
-        .update({ ...cleanForm, updated_at: new Date().toISOString() })
-        .eq('id', editingCustomer.id)
-      if (error) { alert('수정 실패: ' + error.message); return }
-    } else {
-      const { data: { user } } = await supabase.auth.getUser()
-      const { error } = await supabase.from('customers').insert([{ ...cleanForm, created_by: user?.id }])
-      if (error) { alert('등록 실패: ' + error.message); return }
+    setSyncing(true)
+    try {
+      if (editingCustomer) {
+        await updateCustomer(editingCustomer._rowIndex, cleanForm)
+      } else {
+        await appendCustomer(cleanForm)
+      }
+      setShowModal(false)
+      await loadCustomers()
+    } catch (err: any) {
+      alert((editingCustomer ? '수정' : '등록') + ' 실패: ' + err.message)
     }
-    setShowModal(false)
-    loadCustomers()
+    setSyncing(false)
   }
 
   // 리스트에서 직접 상태 변경
   const handleInlineChange = async (id: string, field: string, value: string) => {
-    await supabase.from('customers').update({ [field]: value, updated_at: new Date().toISOString() }).eq('id', id)
-    setCustomers((prev) => prev.map((c) => c.id === id ? { ...c, [field]: value } : c))
+    // 화면에서 즉시 반영 (낙관적 업데이트)
+    setCustomers((prev: any[]) => prev.map((c) => c.id === id ? { ...c, [field]: value } : c))
+    // 뒷단에서 구글시트 비동기 반영
+    const c = customers.find((c: any) => c.id === id)
+    if (c?._rowIndex) {
+      const updated = { ...c, [field]: value }
+      updateCustomer(c._rowIndex, updated).catch((err) => console.error('인라인 수정 실패:', err))
+    }
   }
 
-  const handleDelete = async (id: string) => {
+  const handleDelete = async (id: string, rowIndex?: number) => {
     if (!confirm('정말 삭제하시겠습니까?')) return
-    const { error } = await supabase.from('customers').delete().eq('id', id)
-    if (error) { alert('삭제 실패: ' + error.message); return }
-    loadCustomers()
+    if (!rowIndex) {
+      const c = customers.find((c: any) => c.id === id)
+      rowIndex = c?._rowIndex
+    }
+    if (!rowIndex) { alert('삭제할 행을 찾을 수 없습니다.'); return }
+    try {
+      await deleteCustomer(rowIndex)
+      await loadCustomers()
+    } catch (err: any) {
+      alert('삭제 실패: ' + err.message)
+    }
   }
 
   // Excel/CSV 파일 읽기 → 미리보기 모달
@@ -421,8 +438,25 @@ export default function Customers() {
 
   return (
     <div>
+      {/* 동기화 로딩 오버레이 */}
+      {syncing && (
+        <div className="fixed inset-0 bg-black/30 z-[100] flex items-center justify-center">
+          <div className="bg-white rounded-xl px-8 py-6 shadow-lg text-center">
+            <RefreshCw size={28} className="animate-spin text-emerald-500 mx-auto mb-3" />
+            <p className="text-sm font-medium text-gray-700">구글시트 동기화 중...</p>
+            <p className="text-xs text-gray-400 mt-1">잠시만 기다려주세요</p>
+          </div>
+        </div>
+      )}
+
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
-        <h2 className="text-2xl font-bold text-gray-800">고객정보관리</h2>
+        <div className="flex items-center gap-3">
+          <h2 className="text-2xl font-bold text-gray-800">고객정보관리</h2>
+          <button onClick={async () => { setSyncing(true); setLoading(true); await loadCustomers(); setSyncing(false) }} disabled={syncing}
+            className="flex items-center gap-1 px-2.5 py-1.5 text-xs text-emerald-600 border border-emerald-200 bg-emerald-50 rounded-lg hover:bg-emerald-100 transition disabled:opacity-50">
+            <RefreshCw size={13} className={syncing ? 'animate-spin' : ''} /> {syncing ? '동기화 중...' : '최신화'}
+          </button>
+        </div>
         <div className="flex flex-wrap gap-2">
           <button onClick={downloadTemplate}
             className="flex items-center gap-1.5 px-3 py-2 bg-blue-50 border border-blue-200 text-blue-700 rounded-lg hover:bg-blue-100 transition text-sm">
