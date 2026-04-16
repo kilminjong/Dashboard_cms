@@ -189,17 +189,24 @@ export default function CustomerDetail() {
     setCardUploading(true)
 
     try {
-      // 이미지를 Base64로 변환
+      // 이미지를 고해상도 Base64로 변환 (OCR 정확도 향상)
       const base64 = await new Promise<string>((resolve) => {
-        const reader = new FileReader()
-        reader.onload = () => {
-          const result = reader.result as string
-          resolve(result.split(',')[1]) // data:image/... 제거
+        const img = new window.Image()
+        img.onload = () => {
+          const canvas = document.createElement('canvas')
+          // 고해상도 유지 (최대 1600px)
+          const MAX = 1600
+          const scale = Math.min(1, MAX / Math.max(img.width, img.height))
+          canvas.width = img.width * scale
+          canvas.height = img.height * scale
+          const ctx = canvas.getContext('2d')!
+          ctx.drawImage(img, 0, 0, canvas.width, canvas.height)
+          const dataUrl = canvas.toDataURL('image/png', 1.0) // PNG 무손실
+          resolve(dataUrl.split(',')[1])
         }
-        reader.readAsDataURL(file)
+        img.src = URL.createObjectURL(file)
       })
 
-      // Claude Vision API로 명함 분석
       const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
       const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY
       const { data: { session } } = await supabase.auth.getSession()
@@ -208,10 +215,20 @@ export default function CustomerDetail() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session?.access_token || supabaseAnonKey}`, 'apikey': supabaseAnonKey },
         body: JSON.stringify({
-          messages: [{ role: 'user', content: `이 명함 이미지에서 정보를 추출해주세요. 반드시 아래 JSON 형식으로만 답변하세요. 값이 없으면 빈 문자열로:
-{"name":"이름","phone":"전화번호","email":"이메일","department":"부서","position":"직급","company":"회사명"}` }],
+          messages: [{ role: 'user', content: `이 명함 이미지를 매우 정확하게 OCR 분석해주세요.
+
+## 중요 규칙
+1. 이미지에 보이는 텍스트를 한 글자도 틀리지 않게 정확히 읽어주세요.
+2. 한글 이름은 특히 주의: 받침, 모음을 정확히 구분 (예: 이하름 vs 이아름, 길민종 vs 김민종)
+3. 이메일 주소는 영문 알파벳, 숫자, 특수문자(@._-)를 정확히 읽기
+4. 전화번호는 숫자와 하이픈만 정확히 읽기
+5. 확실하지 않은 글자가 있으면 이미지를 다시 한번 확인하고 가장 정확한 값을 입력
+
+## 출력 형식
+반드시 아래 JSON 형식으로만 답변하세요. 다른 텍스트 없이 JSON만:
+{"name":"성명(풀네임)","phone":"전화번호(하이픈포함)","email":"이메일주소","department":"부서명","position":"직급/직책","company":"회사명","address":"주소"}` }],
           imageBase64: base64,
-          imageType: file.type || 'image/jpeg',
+          imageType: 'image/png',
         }),
       })
 
@@ -344,7 +361,26 @@ export default function CustomerDetail() {
 
           {/* 명함 인식 (OCR) */}
           {!editing && (
-            <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 mb-4">
+            <div
+              className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 mb-4"
+              onPaste={async (e) => {
+                const items = e.clipboardData?.items
+                if (!items) return
+                for (const item of Array.from(items)) {
+                  if (item.type.startsWith('image/')) {
+                    e.preventDefault()
+                    const file = item.getAsFile()
+                    if (file) {
+                      // 가짜 이벤트로 handleCardUpload 호출
+                      const fakeEvent = { target: { files: [file], value: '' } } as any
+                      handleCardUpload(fakeEvent)
+                    }
+                    break
+                  }
+                }
+              }}
+              tabIndex={0}
+            >
               <div className="flex items-center justify-between mb-2">
                 <div className="flex items-center gap-2">
                   <Image size={15} className="text-gray-500" />
@@ -356,7 +392,7 @@ export default function CustomerDetail() {
                   <input type="file" accept="image/*" onChange={handleCardUpload} className="hidden" />
                 </label>
               </div>
-              <p className="text-xs text-gray-400">명함 사진을 업로드하면 AI가 이름, 전화번호, 이메일, 부서를 자동으로 인식하여 입력합니다.</p>
+              <p className="text-xs text-gray-400">명함 사진 업로드 또는 <strong className="text-gray-500">Ctrl+V로 붙여넣기</strong>하면 AI가 자동 인식합니다. (이 영역 클릭 후 붙여넣기)</p>
             </div>
           )}
 
