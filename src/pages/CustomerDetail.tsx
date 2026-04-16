@@ -182,53 +182,68 @@ export default function CustomerDetail() {
     setAiMemoLoading(false)
   }
 
-  // 명함 이미지 압축 + 업로드
-  const compressAndUpload = async (file: File): Promise<string | null> => {
-    return new Promise((resolve) => {
-      const img = new window.Image()
-      img.onload = async () => {
-        const canvas = document.createElement('canvas')
-        const MAX_WIDTH = 800
-        const scale = Math.min(1, MAX_WIDTH / img.width)
-        canvas.width = img.width * scale
-        canvas.height = img.height * scale
-        const ctx = canvas.getContext('2d')!
-        ctx.drawImage(img, 0, 0, canvas.width, canvas.height)
-
-        canvas.toBlob(async (blob) => {
-          if (!blob) { resolve(null); return }
-          const safeName = `card_${Date.now()}_${Math.random().toString(36).slice(2, 8)}.jpg`
-          const { error } = await supabase.storage.from('business-cards').upload(safeName, blob, { contentType: 'image/jpeg', cacheControl: '3600' })
-          if (error) { alert('명함 업로드 실패: ' + error.message); resolve(null); return }
-          const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
-          resolve(`${supabaseUrl}/storage/v1/object/public/business-cards/${safeName}`)
-        }, 'image/jpeg', 0.7)
-      }
-      img.src = URL.createObjectURL(file)
-    })
-  }
-
+  // 명함 OCR: 이미지 → Base64 → Claude Vision → 텍스트 추출 → 자동 입력
   const handleCardUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file || !customer) return
     setCardUploading(true)
-    const url = await compressAndUpload(file)
-    if (url) {
-      if ((customer as any)._rowIndex) {
-        await updateCustomer((customer as any)._rowIndex, { ...form, business_card_url: url })
+
+    try {
+      // 이미지를 Base64로 변환
+      const base64 = await new Promise<string>((resolve) => {
+        const reader = new FileReader()
+        reader.onload = () => {
+          const result = reader.result as string
+          resolve(result.split(',')[1]) // data:image/... 제거
+        }
+        reader.readAsDataURL(file)
+      })
+
+      // Claude Vision API로 명함 분석
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
+      const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY
+      const { data: { session } } = await supabase.auth.getSession()
+
+      const res = await fetch(`${supabaseUrl}/functions/v1/ai-chat`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${session?.access_token || supabaseAnonKey}`, 'apikey': supabaseAnonKey },
+        body: JSON.stringify({
+          messages: [{ role: 'user', content: `이 명함 이미지에서 정보를 추출해주세요. 반드시 아래 JSON 형식으로만 답변하세요. 값이 없으면 빈 문자열로:
+{"name":"이름","phone":"전화번호","email":"이메일","department":"부서","position":"직급","company":"회사명"}` }],
+          imageBase64: base64,
+          imageType: file.type || 'image/jpeg',
+        }),
+      })
+
+      const result = await res.json()
+      const reply = result?.reply || ''
+
+      // JSON 파싱 시도
+      const jsonMatch = reply.match(/\{[\s\S]*?\}/)
+      if (jsonMatch) {
+        const cardInfo = JSON.parse(jsonMatch[0])
+        const newForm = { ...form }
+        if (cardInfo.name) newForm.customer_contact_person = cardInfo.name
+        if (cardInfo.phone) newForm.contact_phone = cardInfo.phone
+        if (cardInfo.email) newForm.contact_email = cardInfo.email
+        if (cardInfo.department) newForm.customer_department = cardInfo.department
+        setForm(newForm)
+
+        // 구글시트에도 반영
+        if ((customer as any)._rowIndex) {
+          await updateCustomer((customer as any)._rowIndex, newForm)
+        }
+
+        alert(`명함 인식 완료!\n\n이름: ${cardInfo.name || '-'}\n전화: ${cardInfo.phone || '-'}\n이메일: ${cardInfo.email || '-'}\n부서: ${cardInfo.department || '-'}\n직급: ${cardInfo.position || '-'}`)
+      } else {
+        alert('명함 인식 결과를 파싱할 수 없습니다. 다시 시도해주세요.')
       }
-      loadCustomer()
+    } catch (err: any) {
+      alert('명함 인식 실패: ' + err.message)
     }
+
     setCardUploading(false)
     e.target.value = ''
-  }
-
-  const handleCardDelete = async () => {
-    if (!customer || !confirm('명함을 삭제하시겠습니까?')) return
-    if ((customer as any)._rowIndex) {
-      await updateCustomer((customer as any)._rowIndex, { ...form, business_card_url: '' })
-    }
-    loadCustomer()
   }
 
   if (loading) return <div className="flex items-center justify-center py-20"><RefreshCw size={24} className="animate-spin text-emerald-500" /></div>
@@ -327,31 +342,21 @@ export default function CustomerDetail() {
           {/* 전체현황 (상단 바로 표시) */}
           {!editing && renderOverview()}
 
-          {/* 명함 */}
+          {/* 명함 인식 (OCR) */}
           {!editing && (
             <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 mb-4">
               <div className="flex items-center justify-between mb-2">
                 <div className="flex items-center gap-2">
                   <Image size={15} className="text-gray-500" />
-                  <span className="text-sm font-semibold text-gray-700">담당자 명함</span>
+                  <span className="text-sm font-semibold text-gray-700">명함 인식</span>
+                  <span className="text-xs text-gray-400">(AI 자동 입력)</span>
                 </div>
                 <label className={`flex items-center gap-1.5 px-3 py-1.5 bg-blue-50 border border-blue-200 text-blue-700 rounded-lg text-xs cursor-pointer hover:bg-blue-100 transition ${cardUploading ? 'opacity-50 pointer-events-none' : ''}`}>
-                  <Upload size={13} /> {cardUploading ? '업로드 중...' : '명함 업로드'}
+                  <Upload size={13} /> {cardUploading ? '인식 중...' : '명함 촬영/업로드'}
                   <input type="file" accept="image/*" onChange={handleCardUpload} className="hidden" />
                 </label>
               </div>
-              {(customer as any).business_card_url ? (
-                <div className="relative group">
-                  <a href={(customer as any).business_card_url} target="_blank" rel="noopener noreferrer">
-                    <img src={(customer as any).business_card_url} alt="명함" className="rounded-lg border border-gray-200 max-h-[200px] w-auto" />
-                  </a>
-                  <button onClick={handleCardDelete} className="absolute top-2 right-2 p-1.5 bg-red-500 text-white rounded-lg opacity-0 group-hover:opacity-100 transition text-xs">
-                    <Trash2 size={13} />
-                  </button>
-                </div>
-              ) : (
-                <p className="text-xs text-gray-300 py-4 text-center">등록된 명함이 없습니다.</p>
-              )}
+              <p className="text-xs text-gray-400">명함 사진을 업로드하면 AI가 이름, 전화번호, 이메일, 부서를 자동으로 인식하여 입력합니다.</p>
             </div>
           )}
 

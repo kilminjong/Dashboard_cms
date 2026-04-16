@@ -3,7 +3,7 @@
 
 const EDGE_FUNCTION_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/google-sheets`
 
-// 구글시트 컬럼 순서 (헤더 3행 기준)
+// 구글시트 컬럼 순서 (헤더 3행 기준 - 실제 시트 기준)
 const SHEET_COLUMNS = [
   'duplicate_check',       // 0: 중복체크
   'management_code',       // 1: 관리코드
@@ -17,36 +17,36 @@ const SHEET_COLUMNS = [
   'reception_date',        // 9: 신규접수일
   'additional_connection_date', // 10: 추가연계접수일
   'customer_contact_person', // 11: 고객담당자
-  'customer_department',   // 12: 담당부서
+  'customer_department',   // 12: 담당 부서
   'contact_phone',         // 13: 담당연락처
-  'sensitive_customer',    // 14: 민감고객
-  'intimacy',              // 15: 친밀도
-  'opening_status',        // 16: 개설상태
-  'opening_date',          // 17: 개설/이행일
-  'connection_status',     // 18: 연계상태
-  'connection_date',       // 19: 연계일자
-  'termination_date',      // 20: 해지일자
-  'additional_service1',   // 21: 부가서비스1
-  'additional_service2',   // 22: 부가서비스2
-  'access_method',         // 23: 접속방식
-  'cms_os',                // 24: CMS서버 OS
-  'cms_sql_version',       // 25: CMS서버 SQL
-  'server_install_location', // 26: 서버PC 설치장소
-  'server_location',       // 27: 서버PC 상세위치
-  'schedule_use',          // 28: 스케줄 사용여부
-  'erp_company',           // 29: ERP회사
-  'erp_type',              // 30: ERP종류
-  'erp_db',                // 31: ERP DB
-  'connection_method',     // 32: 연계방식
-  'business_closure',      // 33: 휴폐업여부
-  'hq_contract_report',    // 34: 본사계약보고
-  'hq_connection_report',  // 35: 본사연계보고
-  'hq_registered',         // 36: 본사등록여부
-  'invoice_registered',    // 37: 청구서 등록여부
-  'transition_end_date',   // 38: 이행종료일
+  'contact_email',         // 14: 이메일
+  'cms_ip',                // 15: CMS IP
+  'intimacy',              // 16: 친밀도
+  'opening_status',        // 17: 개설상태
+  'opening_date',          // 18: 개설/이행일
+  'connection_status',     // 19: 연계상태
+  'connection_date',       // 20: 연계일자
+  'termination_date',      // 21: 해지일자
+  'additional_service1',   // 22: 부가서비스1
+  'additional_service2',   // 23: 부가서비스2
+  'access_method',         // 24: 접속방식
+  'cms_os',                // 25: CMS서버 OS
+  'cms_sql_version',       // 26: CMS서버 SQL
+  'server_install_location', // 27: 서버PC 설치장소
+  'server_location',       // 28: 서버PC 상세위치
+  'schedule_use',          // 29: 스케줄 사용여부
+  'erp_company',           // 30: ERP회사
+  'erp_type',              // 31: ERP종류
+  'erp_db',                // 32: ERP DB
+  'connection_method',     // 33: 연계방식
+  'business_closure',      // 34: 휴폐업여부
+  'hq_contract_report',    // 35: 본사계약보고
+  'hq_connection_report',  // 36: 본사연계보고
+  'hq_registered',         // 37: 본사등록여부
+  'invoice_registered',    // 38: 청구서 등록여부
 ]
 
-// 구글시트 헤더 → DB 키 매핑
+// 구글시트 헤더 → DB 키 매핑 (실제 시트 기준)
 const HEADER_MAP: Record<string, string> = {
   '중복체크': 'duplicate_check',
   '관리코드': 'management_code',
@@ -63,7 +63,8 @@ const HEADER_MAP: Record<string, string> = {
   '담당 부서': 'customer_department',
   '담당부서': 'customer_department',
   '담당연락처': 'contact_phone',
-  '민감고객': 'sensitive_customer',
+  '이메일': 'contact_email',
+  'CMS IP': 'cms_ip',
   '친밀도': 'intimacy',
   '개설상태': 'opening_status',
   '개설/이행일': 'opening_date',
@@ -87,7 +88,6 @@ const HEADER_MAP: Record<string, string> = {
   '본사등록여부': 'hq_registered',
   '청구서 등록여부': 'invoice_registered',
   '청구서\n 등록여부': 'invoice_registered',
-  '이행종료일': 'transition_end_date',
 }
 
 // 구글시트 행 → 객체 변환
@@ -138,6 +138,12 @@ export async function fetchCustomers(): Promise<any[]> {
 
   const headers = data.headers || []
   const customers = (data.data || []).map((row: any) => rowToCustomer(row, headers))
+  // 관리코드 내림차순 정렬 (최근 등록이 먼저)
+  customers.sort((a: any, b: any) => {
+    const codeA = parseInt(a.management_code) || 0
+    const codeB = parseInt(b.management_code) || 0
+    return codeB - codeA
+  })
   return customers
 }
 
