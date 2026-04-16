@@ -35,11 +35,23 @@ const FIELD_GROUPS: Record<string, { key: string; label: string; type?: string; 
     { key: 'customer_ip', label: '고객사 IP' },
     { key: 'cms_ip', label: 'CMS IP' },
   ],
-  '담당자': [
-    { key: 'customer_contact_person', label: '고객담당자' },
-    { key: 'customer_department', label: '담당 부서', type: 'select-other', options: ['인사팀', '재무팀', '전산팀'] },
-    { key: 'contact_phone', label: '담당자 연락처' },
-    { key: 'contact_email', label: '담당자 이메일', type: 'email' },
+  '담당자1': [
+    { key: 'customer_contact_person', label: '담당자1 이름' },
+    { key: 'customer_department', label: '담당자1 부서', type: 'select-other', options: ['인사팀', '재무팀', '전산팀'] },
+    { key: 'contact_phone', label: '담당자1 연락처' },
+    { key: 'contact_email', label: '담당자1 이메일', type: 'email' },
+  ],
+  '담당자2': [
+    { key: 'customer_contact_person2', label: '담당자2 이름' },
+    { key: 'customer_department2', label: '담당자2 부서', type: 'select-other', options: ['인사팀', '재무팀', '전산팀'] },
+    { key: 'contact_phone2', label: '담당자2 연락처' },
+    { key: 'contact_email2', label: '담당자2 이메일', type: 'email' },
+  ],
+  '담당자3': [
+    { key: 'customer_contact_person3', label: '담당자3 이름' },
+    { key: 'customer_department3', label: '담당자3 부서', type: 'select-other', options: ['인사팀', '재무팀', '전산팀'] },
+    { key: 'contact_phone3', label: '담당자3 연락처' },
+    { key: 'contact_email3', label: '담당자3 이메일', type: 'email' },
   ],
 }
 
@@ -306,10 +318,12 @@ export default function CustomerDetail() {
         <div className="bg-amber-50 px-4 py-2 border-t border-b border-amber-100"><span className="text-sm font-semibold text-amber-700">담당자 정보</span></div>
         <div className="text-xs">
           {[
-            ['고객담당자', form.customer_contact_person], ['담당부서', form.customer_department],
-            ['연락처', form.contact_phone], ['이메일', form.contact_email],
+            ['담당자1', form.customer_contact_person], ['부서1', form.customer_department],
+            ['연락처1', form.contact_phone], ['이메일1', form.contact_email],
+            ...(form.customer_contact_person2 ? [['담당자2', form.customer_contact_person2], ['부서2', form.customer_department2], ['연락처2', form.contact_phone2], ['이메일2', form.contact_email2]] : []),
+            ...(form.customer_contact_person3 ? [['담당자3', form.customer_contact_person3], ['부서3', form.customer_department3], ['연락처3', form.contact_phone3], ['이메일3', form.contact_email3]] : []),
           ].map(([label, val], i) => (
-            <div key={label} className={`flex ${i % 2 === 0 ? 'bg-white' : 'bg-gray-50'}`}>
+            <div key={label + i} className={`flex ${i % 2 === 0 ? 'bg-white' : 'bg-gray-50'}`}>
               <span className="px-3 py-2 w-24 shrink-0 font-medium text-gray-500 border-r border-gray-100">{label}</span>
               <span className="px-3 py-2 text-gray-800">{val || '-'}</span>
             </div>

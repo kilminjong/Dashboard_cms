@@ -218,12 +218,14 @@ export default function CustomerSearch() {
                   <div className="bg-gray-50 rounded-lg overflow-hidden border border-gray-100">
                     <div className="bg-emerald-50 px-3 py-1.5 border-b border-emerald-100"><span className="text-xs font-semibold text-emerald-700">담당자 정보</span></div>
                     {[
-                      ['고객담당자', selectedCustomer.customer_contact_person],
-                      ['담당부서', selectedCustomer.customer_department],
-                      ['연락처', selectedCustomer.contact_phone],
-                      ['이메일', selectedCustomer.contact_email],
+                      ['담당자1', selectedCustomer.customer_contact_person],
+                      ['부서1', selectedCustomer.customer_department],
+                      ['연락처1', selectedCustomer.contact_phone],
+                      ['이메일1', selectedCustomer.contact_email],
+                      ...(selectedCustomer.customer_contact_person2 ? [['담당자2', selectedCustomer.customer_contact_person2], ['부서2', selectedCustomer.customer_department2], ['연락처2', selectedCustomer.contact_phone2], ['이메일2', selectedCustomer.contact_email2]] : []),
+                      ...(selectedCustomer.customer_contact_person3 ? [['담당자3', selectedCustomer.customer_contact_person3], ['부서3', selectedCustomer.customer_department3], ['연락처3', selectedCustomer.contact_phone3], ['이메일3', selectedCustomer.contact_email3]] : []),
                     ].map(([label, val], i) => (
-                      <div key={label} className={`flex text-xs ${i % 2 === 0 ? 'bg-white' : 'bg-gray-50/70'}`}>
+                      <div key={label + i} className={`flex text-xs ${i % 2 === 0 ? 'bg-white' : 'bg-gray-50/70'}`}>
                         <span className="px-2 py-1.5 w-20 shrink-0 font-medium text-gray-500 border-r border-gray-100">{label}</span>
                         <span className="px-2 py-1.5 text-gray-800 truncate">{val || '-'}</span>
                       </div>

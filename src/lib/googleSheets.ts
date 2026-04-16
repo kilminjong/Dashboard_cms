@@ -44,6 +44,18 @@ const SHEET_COLUMNS = [
   'hq_connection_report',  // 36: 본사연계보고
   'hq_registered',         // 37: 본사등록여부
   'invoice_registered',    // 38: 청구서 등록여부
+  'transition_end_date',   // 39: 이행종료일
+  '_status1', '_hq_contract', '_hq_build', '_hq_connection', '_build_schedule', // 40-44: 참조컬럼
+  '_biz1', '_stat2', '_hqc2', '_hqb2', '_hqconn2', // 45-49: 참조컬럼
+  '_biz2', '_stat3', '_hqc3', '_hqb3', '_hqconn3', // 50-54: 참조컬럼
+  'customer_contact_person2', // 55: 고객담당자2
+  'customer_department2',     // 56: 담당부서2
+  'contact_phone2',           // 57: 담당연락처2
+  'contact_email2',           // 58: 이메일2
+  'customer_contact_person3', // 59: 고객담당자3
+  'customer_department3',     // 60: 담당부서3
+  'contact_phone3',           // 61: 담당연락처3
+  'contact_email3',           // 62: 이메일3
 ]
 
 // 구글시트 헤더 → DB 키 매핑 (실제 시트 기준)
@@ -88,6 +100,17 @@ const HEADER_MAP: Record<string, string> = {
   '본사등록여부': 'hq_registered',
   '청구서 등록여부': 'invoice_registered',
   '청구서\n 등록여부': 'invoice_registered',
+  '이행종료일': 'transition_end_date',
+  '고객담당자2': 'customer_contact_person2',
+  '담당 부서2': 'customer_department2',
+  '담당부서2': 'customer_department2',
+  '담당연락처2': 'contact_phone2',
+  '이메일2': 'contact_email2',
+  '고객담당자3': 'customer_contact_person3',
+  '담당 부서3': 'customer_department3',
+  '담당부서3': 'customer_department3',
+  '담당연락처3': 'contact_phone3',
+  '이메일3': 'contact_email3',
 }
 
 // 구글시트 행 → 객체 변환
