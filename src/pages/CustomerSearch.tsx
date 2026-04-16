@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { supabase } from '../lib/supabase'
+import { fetchCustomers } from '../lib/googleSheets'
 import { Search, User, X, ChevronLeft } from 'lucide-react'
 
 export default function CustomerSearch() {
@@ -15,12 +15,12 @@ export default function CustomerSearch() {
   useEffect(() => { loadCustomers() }, [])
 
   const loadCustomers = async () => {
-    const { data } = await supabase
-      .from('customers')
-      .select('*')
-      .order('created_at', { ascending: false })
-      .range(0, 9999)
-    setCustomers(data || [])
+    try {
+      const data = await fetchCustomers()
+      setCustomers(data || [])
+    } catch (err) {
+      console.error('고객 데이터 로드 실패:', err)
+    }
     setLoading(false)
   }
 

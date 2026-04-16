@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
+import { fetchCustomers } from '../lib/googleSheets'
 import { useAuth } from '../hooks/useAuth'
 import { Send, Bot, User, Trash2, Sparkles, Plus, MessageSquare, HelpCircle, Menu, ChevronDown, ChevronRight, Edit2, X, Save, Search, Image } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
@@ -234,10 +235,7 @@ export default function AiAssistant() {
       const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY
       const { data: { session } } = await supabase.auth.getSession()
 
-      const { data: customers } = await supabase
-        .from('customers')
-        .select('customer_name, opening_status, manager, reception_date, connection_status, erp_company, business_number, customer_number')
-        .range(0, 9999)
+      const customers = await fetchCustomers().catch(() => [])
 
       const today = new Date().toISOString().split('T')[0]
       const { data: schedules } = await supabase.from('schedules').select('title, description, start_date').gte('start_date', today).order('start_date').limit(20)

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
+import { fetchCustomers, updateCustomer } from '../lib/googleSheets'
 import type { Customer, CustomerMemo, CustomerHistory } from '../types'
 import { ArrowLeft, Save, Plus, Sparkles, RefreshCw, Clock, Trash2, Edit2, Upload, Image } from 'lucide-react'
 
@@ -82,12 +83,31 @@ export default function CustomerDetail() {
   }, [id])
 
   const loadCustomer = async () => {
-    const { data } = await supabase.from('customers').select('*').eq('id', id).single()
-    if (data) {
-      setCustomer(data)
-      const f: Record<string, string> = {}
-      Object.values(FIELD_GROUPS).flat().forEach(({ key }) => { f[key] = (data as any)[key] || '' })
-      setForm(f); setOriginalForm(f)
+    try {
+      // gs_로 시작하는 ID면 구글시트에서 조회
+      if (id?.startsWith('gs_')) {
+        const rowIndex = parseInt(id.replace('gs_', ''))
+        const allCustomers = await fetchCustomers()
+        const data = allCustomers.find((c: any) => c._rowIndex === rowIndex)
+        if (data) {
+          setCustomer(data as any)
+          const f: Record<string, string> = {}
+          Object.values(FIELD_GROUPS).flat().forEach(({ key }) => { f[key] = (data as any)[key] || '' })
+          setForm(f); setOriginalForm(f)
+        }
+      } else {
+        // 기존 Supabase UUID면 구글시트에서 이름으로 검색
+        const allCustomers = await fetchCustomers()
+        const data = allCustomers.find((c: any) => c.id === id)
+        if (data) {
+          setCustomer(data as any)
+          const f: Record<string, string> = {}
+          Object.values(FIELD_GROUPS).flat().forEach(({ key }) => { f[key] = (data as any)[key] || '' })
+          setForm(f); setOriginalForm(f)
+        }
+      }
+    } catch (err) {
+      console.error('고객 로드 실패:', err)
     }
     setLoading(false)
   }
@@ -120,8 +140,11 @@ export default function CustomerDetail() {
       if (f.type === 'date' && updateData[f.key] === '') updateData[f.key] = null
     })
 
-    const { error } = await supabase.from('customers').update(updateData).eq('id', customer.id)
-    if (error) { alert('저장 실패: ' + error.message); setSaving(false); return }
+    try {
+      if ((customer as any)._rowIndex) {
+        await updateCustomer((customer as any)._rowIndex, { ...form })
+      }
+    } catch (err: any) { alert('저장 실패: ' + err.message); setSaving(false); return }
 
     if (changes.length > 0 && user) {
       await supabase.from('customer_history').insert(
@@ -191,7 +214,9 @@ export default function CustomerDetail() {
     setCardUploading(true)
     const url = await compressAndUpload(file)
     if (url) {
-      await supabase.from('customers').update({ business_card_url: url }).eq('id', customer.id)
+      if ((customer as any)._rowIndex) {
+        await updateCustomer((customer as any)._rowIndex, { ...form, business_card_url: url })
+      }
       loadCustomer()
     }
     setCardUploading(false)
@@ -200,7 +225,9 @@ export default function CustomerDetail() {
 
   const handleCardDelete = async () => {
     if (!customer || !confirm('명함을 삭제하시겠습니까?')) return
-    await supabase.from('customers').update({ business_card_url: '' }).eq('id', customer.id)
+    if ((customer as any)._rowIndex) {
+      await updateCustomer((customer as any)._rowIndex, { ...form, business_card_url: '' })
+    }
     loadCustomer()
   }
 

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
+import { fetchCustomers } from '../lib/googleSheets'
 import { useAuth } from '../hooks/useAuth'
 import { useNavigate } from 'react-router-dom'
 import { Users, UserCheck, Calendar, Sparkles, RefreshCw, Clock, XCircle, UserCircle, X } from 'lucide-react'
@@ -88,15 +89,15 @@ export default function Dashboard() {
     const now = new Date()
     const today = now.toISOString().split('T')[0]
 
-    const [customers, schedules, todaySchedules] = await Promise.all([
-      supabase.from('customers').select('opening_status, manager, customer_name, business_number, customer_number, created_at, reception_date, construction_type, id').range(0, 9999),
+    const [gsCustomers, schedules, todaySchedules] = await Promise.all([
+      fetchCustomers(),
       supabase.from('schedules').select('id', { count: 'exact', head: true })
         .eq('start_date', today),
       supabase.from('schedules').select('id, title, description, start_time, end_time, is_done')
         .eq('start_date', today).order('start_time'),
     ])
 
-    const list = customers.data || []
+    const list = gsCustomers || []
     setAllCustomers(list)
     setTodayScheduleList(todaySchedules.data || [])
     const categorized = list.map((c) => categorizeStatus(c.opening_status))

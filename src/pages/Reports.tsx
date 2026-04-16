@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
-import { supabase } from '../lib/supabase'
+import { fetchCustomers } from '../lib/googleSheets'
 import { Download } from 'lucide-react'
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts'
 import * as XLSX from 'xlsx'
@@ -20,7 +20,7 @@ export default function Reports() {
   const [previewData, setPreviewData] = useState<any[][]>([])
   const [previewTitle, setPreviewTitle] = useState('')
 
-  useEffect(() => { supabase.from('customers').select('*').range(0, 9999).then(({ data }) => { setCustomers(data || []); setLoading(false) }) }, [])
+  useEffect(() => { fetchCustomers().then((data) => { setCustomers(data || []); setLoading(false) }).catch(() => setLoading(false)) }, [])
 
   const now = new Date(); const today = now.toISOString().split('T')[0]
   const thisMonthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
