@@ -1,91 +1,82 @@
-import { useEffect } from 'react'
+import { useState } from 'react'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
-import { useAuthStore } from '@/store/authStore'
-import MainLayout from '@/components/layout/MainLayout'
-import LoginPage from '@/pages/auth/LoginPage'
-import RegisterPage from '@/pages/auth/RegisterPage'
-import DashboardPage from '@/pages/dashboard/DashboardPage'
-import StatisticsPage from '@/pages/statistics/StatisticsPage'
-import CustomersPage from '@/pages/customers/CustomersPage'
-import VocPage from '@/pages/voc/VocPage'
-import ErpMasterPage from '@/pages/erp-master/ErpMasterPage'
-import KeyContactsPage from '@/pages/key-contacts/KeyContactsPage'
-import ReportsPage from '@/pages/reports/ReportsPage'
-import SystemPage from '@/pages/system/SystemPage'
-import UserManagementPage from '@/pages/system/UserManagementPage'
-import AccessLogsPage from '@/pages/system/AccessLogsPage'
-import TargetManagementPage from '@/pages/system/TargetManagementPage'
+import { useAuth } from './hooks/useAuth'
+import Layout from './components/layout/Layout'
+import NameSetupModal from './components/NameSetupModal'
+import Login from './pages/Login'
+import Signup from './pages/Signup'
+import Dashboard from './pages/Dashboard'
+import Customers from './pages/Customers'
+import CustomerDetail from './pages/CustomerDetail'
+import AiAssistant from './pages/AiAssistant'
+import CalendarPage from './pages/Calendar'
+import Marketing from './pages/Marketing'
+import Documents from './pages/Documents'
+import Reports from './pages/Reports'
+import KpiSettings from './pages/KpiSettings'
+import CustomerSearch from './pages/CustomerSearch'
+import ProfilePage from './pages/Profile'
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
-  const { isAuthenticated, isLoading } = useAuthStore()
+  const { session, profile, loading, refreshProfile } = useAuth()
+  const [nameSetupDone, setNameSetupDone] = useState(false)
 
-  if (isLoading) {
+  if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <div className="text-center">
-          <div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin mx-auto" />
-          <p className="mt-4 text-sm text-gray-500">로딩 중...</p>
-        </div>
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-gray-400">로딩 중...</div>
       </div>
     )
   }
 
-  if (!isAuthenticated) {
+  if (!session) {
     return <Navigate to="/login" replace />
   }
 
-  return <>{children}</>
-}
-
-function AdminRoute({ children }: { children: React.ReactNode }) {
-  const { user } = useAuthStore()
-
-  if (user?.role !== 'SUPER_ADMIN') {
-    return <Navigate to="/" replace />
+  // 이름이 없으면 이름 입력 모달 표시
+  const hasName = profile?.name || session.user.user_metadata?.name || nameSetupDone
+  if (!hasName) {
+    return (
+      <NameSetupModal
+        userId={session.user.id}
+        email={session.user.email || ''}
+        onComplete={() => {
+          setNameSetupDone(true)
+          refreshProfile()
+        }}
+      />
+    )
   }
 
   return <>{children}</>
 }
 
 export default function App() {
-  const { initialize } = useAuthStore()
-
-  useEffect(() => {
-    initialize()
-  }, [initialize])
-
   return (
     <BrowserRouter>
       <Routes>
-        {/* 공개 페이지 */}
-        <Route path="/login" element={<LoginPage />} />
-        <Route path="/register" element={<RegisterPage />} />
-
-        {/* 인증 필요 페이지 */}
+        <Route path="/login" element={<Login />} />
+        <Route path="/signup" element={<Signup />} />
         <Route
           element={
             <ProtectedRoute>
-              <MainLayout />
+              <Layout />
             </ProtectedRoute>
           }
         >
-          <Route path="/" element={<DashboardPage />} />
-          <Route path="/statistics" element={<StatisticsPage />} />
-          <Route path="/customers" element={<CustomersPage />} />
-          <Route path="/voc" element={<VocPage />} />
-          <Route path="/erp-master" element={<ErpMasterPage />} />
-          <Route path="/key-contacts" element={<KeyContactsPage />} />
-          <Route path="/reports" element={<ReportsPage />} />
-
-          {/* 관리자 전용 */}
-          <Route path="/system" element={<AdminRoute><SystemPage /></AdminRoute>} />
-          <Route path="/system/users" element={<AdminRoute><UserManagementPage /></AdminRoute>} />
-          <Route path="/system/logs" element={<AdminRoute><AccessLogsPage /></AdminRoute>} />
-          <Route path="/system/targets" element={<AdminRoute><TargetManagementPage /></AdminRoute>} />
+          <Route path="/" element={<Dashboard />} />
+          <Route path="/customers" element={<Customers />} />
+          <Route path="/customers/:id" element={<CustomerDetail />} />
+          <Route path="/customers/detail-search" element={<CustomerSearch />} />
+          <Route path="/marketing" element={<Marketing />} />
+          <Route path="/reports/:tab" element={<Reports />} />
+          <Route path="/reports" element={<Reports />} />
+          <Route path="/kpi-settings" element={<KpiSettings />} />
+          <Route path="/ai-assistant" element={<AiAssistant />} />
+          <Route path="/calendar" element={<CalendarPage />} />
+          <Route path="/documents" element={<Documents />} />
+          <Route path="/profile" element={<ProfilePage />} />
         </Route>
-
-        {/* 404 */}
-        <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </BrowserRouter>
   )
