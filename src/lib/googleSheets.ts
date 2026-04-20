@@ -113,72 +113,27 @@ const HEADER_MAP: Record<string, string> = {
   '이메일3': 'contact_email3',
 }
 
-// 날짜 필드 정규화: "20190201" → "2019-02-01", "-" → ""
-const DATE_FIELDS = new Set([
-  'reception_date',
-  'opening_date',
-  'termination_date',
-  'connection_date',
-  'additional_connection_date',
-  'transition_end_date',
-])
-
-function normalizeDate(v: string): string {
-  if (!v || v === '-' || v === '미정') return ''
-  const s = String(v).trim()
-  // YYYYMMDD → YYYY-MM-DD
-  if (/^\d{8}$/.test(s)) return `${s.slice(0, 4)}-${s.slice(4, 6)}-${s.slice(6, 8)}`
-  // YYYY-MM-DD, YYYY/MM/DD, YYYY.MM.DD 통일
-  const m = s.match(/^(\d{4})[.\-/](\d{1,2})[.\-/](\d{1,2})$/)
-  if (m) return `${m[1]}-${m[2].padStart(2, '0')}-${m[3].padStart(2, '0')}`
-  return s
-}
-
-function normalizeValue(dbKey: string, v: string): string {
-  if (DATE_FIELDS.has(dbKey)) return normalizeDate(v)
-  return v
-}
-
-// 원시 2D 값 → 고객 객체 (위치 기반, 중복 헤더 영향 없음)
-function rawRowToCustomer(values: string[], rowIndex: number): any {
-  const customer: any = { _rowIndex: rowIndex, id: `gs_${rowIndex}` }
-  SHEET_COLUMNS.forEach((dbKey, idx) => {
-    if (!dbKey || dbKey.startsWith('_')) return
-    const raw = values[idx]
-    if (raw === undefined || raw === '') return
-    const v = normalizeValue(dbKey, raw)
-    if (v !== '') customer[dbKey] = v
-  })
-  return customer
-}
-
-// 헤더 문자열 정규화 (공백/개행/유사문자 제거)
-const normalize = (s: string) => (s || '').replace(/[\s\u200B\u00A0\n\r\t]/g, '').trim()
-const NORMALIZED_HEADER_MAP: Record<string, string> = {}
-for (const [k, v] of Object.entries(HEADER_MAP)) {
-  NORMALIZED_HEADER_MAP[normalize(k)] = v
-}
-
-// 역호환: 구(舊) Edge Function의 객체 응답 기반 변환
-function rowToCustomer(row: Record<string, string>, headers: string[]): any {
+// 구글시트 행 → 객체 변환
+function rowToCustomer(row: Record<string, string>, _headers: string[]): any {
   const customer: any = { _rowIndex: row._rowIndex }
-  const setField = (dbKey: string, raw: any) => {
-    if (raw === undefined || raw === '') return
-    const v = normalizeValue(dbKey, String(raw))
-    if (v !== '') customer[dbKey] = v
-  }
-  headers.forEach((header, idx) => {
-    const dbKey = SHEET_COLUMNS[idx]
-    if (!dbKey || dbKey.startsWith('_')) return
-    setField(dbKey, row[header])
-  })
+  // 헤더 기반 매핑
   for (const [sheetHeader, value] of Object.entries(row)) {
     if (sheetHeader === '_rowIndex') continue
-    if (value === undefined || value === '') continue
-    const norm = normalize(sheetHeader)
-    const dbKey = HEADER_MAP[sheetHeader] || NORMALIZED_HEADER_MAP[norm]
-    if (dbKey && !customer[dbKey]) setField(dbKey, value)
+    // 정확한 매핑 찾기
+    const dbKey = HEADER_MAP[sheetHeader]
+    if (dbKey) {
+      customer[dbKey] = value
+    } else {
+      // 부분 매칭 시도
+      for (const [hKey, dKey] of Object.entries(HEADER_MAP)) {
+        if (sheetHeader.includes(hKey) || hKey.includes(sheetHeader)) {
+          customer[dKey] = value
+          break
+        }
+      }
+    }
   }
+  // ID는 rowIndex 기반으로 생성
   customer.id = `gs_${customer._rowIndex}`
   return customer
 }
@@ -204,15 +159,9 @@ export async function fetchCustomers(): Promise<any[]> {
   const data = await res.json()
   if (data.error) throw new Error(data.error)
 
-  // 신(新) Edge Function: rows(2D 원시값) 우선 사용 — 중복 헤더 문제 회피
-  let customers: any[]
-  if (Array.isArray(data.rows) && data.rows.length > 0) {
-    customers = data.rows.map((r: any) => rawRowToCustomer(r.values || [], r._rowIndex))
-  } else {
-    const headers = data.headers || []
-    customers = (data.data || []).map((row: any) => rowToCustomer(row, headers))
-  }
-
+  const headers = data.headers || []
+  const customers = (data.data || []).map((row: any) => rowToCustomer(row, headers))
+  // 관리코드 내림차순 정렬 (최근 등록이 먼저)
   customers.sort((a: any, b: any) => {
     const codeA = parseInt(a.management_code) || 0
     const codeB = parseInt(b.management_code) || 0

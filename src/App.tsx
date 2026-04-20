@@ -13,7 +13,6 @@ import CalendarPage from './pages/Calendar'
 import Marketing from './pages/Marketing'
 import Documents from './pages/Documents'
 import Reports from './pages/Reports'
-import KpiSettings from './pages/KpiSettings'
 import CustomerSearch from './pages/CustomerSearch'
 import ProfilePage from './pages/Profile'
 
@@ -71,7 +70,6 @@ export default function App() {
           <Route path="/marketing" element={<Marketing />} />
           <Route path="/reports/:tab" element={<Reports />} />
           <Route path="/reports" element={<Reports />} />
-          <Route path="/kpi-settings" element={<KpiSettings />} />
           <Route path="/ai-assistant" element={<AiAssistant />} />
           <Route path="/calendar" element={<CalendarPage />} />
           <Route path="/documents" element={<Documents />} />

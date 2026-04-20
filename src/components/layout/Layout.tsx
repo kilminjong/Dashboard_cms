@@ -29,14 +29,10 @@ const navItems = [
   },
   {
     label: '보고서', icon: FileBarChart, children: [
-      { section: '시계열' },
       { to: '/reports/periodic', label: '업무 보고서' },
-      { to: '/reports/unopened', label: '미개설 관리' },
-      { section: '사업 특화' },
       { to: '/reports/manager', label: '담당자 실적' },
+      { to: '/reports/unopened', label: '미개설 관리' },
       { to: '/reports/marketing', label: '마케팅 보고서' },
-      { section: '설정' },
-      { to: '/kpi-settings', label: 'KPI 목표 관리' },
     ],
   },
   { to: '/marketing', icon: TrendingUp, label: '마케팅' },
@@ -52,7 +48,7 @@ export default function Layout() {
   const { profile } = useAuth()
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [expandedMenu, setExpandedMenu] = useState<string | null>(
-    location.pathname.startsWith('/customers') ? '고객정보관리' : (location.pathname.startsWith('/reports') || location.pathname.startsWith('/kpi-settings')) ? '보고서' : null
+    location.pathname.startsWith('/customers') ? '고객정보관리' : location.pathname.startsWith('/reports') ? '보고서' : null
   )
   useNotification()
   useAutoBackup()
@@ -117,33 +113,24 @@ export default function Layout() {
                   </button>
                   {isExpanded && (
                     <div className="ml-4 mt-0.5 space-y-0.5">
-                      {item.children.map((child: any, idx: number) => {
-                        if (child.section) {
-                          return (
-                            <div key={`sec-${child.section}`} className={`px-3 text-[10px] font-semibold text-slate-500 uppercase tracking-wider ${idx === 0 ? 'pt-1' : 'pt-2.5'} pb-0.5`}>
-                              {child.section}
-                            </div>
-                          )
-                        }
-                        return (
-                          <NavLink
-                            key={child.to}
-                            to={child.to!}
-                            end
-                            onClick={() => setSidebarOpen(false)}
-                            className={({ isActive }) =>
-                              `flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs font-medium transition-colors ${
-                                isActive
-                                  ? 'bg-emerald-600 text-white shadow-sm'
-                                  : 'text-slate-400 hover:bg-slate-700/40 hover:text-white'
-                              }`
-                            }
-                          >
-                            <div className="w-1.5 h-1.5 rounded-full bg-current opacity-50"></div>
-                            {child.label}
-                          </NavLink>
-                        )
-                      })}
+                      {item.children.map((child) => (
+                        <NavLink
+                          key={child.to}
+                          to={child.to}
+                          end
+                          onClick={() => setSidebarOpen(false)}
+                          className={({ isActive }) =>
+                            `flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs font-medium transition-colors ${
+                              isActive
+                                ? 'bg-emerald-600 text-white shadow-sm'
+                                : 'text-slate-400 hover:bg-slate-700/40 hover:text-white'
+                            }`
+                          }
+                        >
+                          <div className="w-1.5 h-1.5 rounded-full bg-current opacity-50"></div>
+                          {child.label}
+                        </NavLink>
+                      ))}
                     </div>
                   )}
                 </div>
