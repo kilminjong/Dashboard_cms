@@ -96,27 +96,21 @@ export default function CustomerDetail() {
 
   const loadCustomer = async () => {
     try {
-      // gs_로 시작하는 ID면 구글시트에서 조회
+      const allCustomers = await fetchCustomers()
+      let data: any = null
       if (id?.startsWith('gs_')) {
         const rowIndex = parseInt(id.replace('gs_', ''))
-        const allCustomers = await fetchCustomers()
-        const data = allCustomers.find((c: any) => c._rowIndex === rowIndex)
-        if (data) {
-          setCustomer(data as any)
-          const f: Record<string, string> = {}
-          Object.values(FIELD_GROUPS).flat().forEach(({ key }) => { f[key] = (data as any)[key] || '' })
-          setForm(f); setOriginalForm(f)
-        }
+        data = allCustomers.find((c: any) => c._rowIndex === rowIndex)
       } else {
-        // 기존 Supabase UUID면 구글시트에서 이름으로 검색
-        const allCustomers = await fetchCustomers()
-        const data = allCustomers.find((c: any) => c.id === id)
-        if (data) {
-          setCustomer(data as any)
-          const f: Record<string, string> = {}
-          Object.values(FIELD_GROUPS).flat().forEach(({ key }) => { f[key] = (data as any)[key] || '' })
-          setForm(f); setOriginalForm(f)
-        }
+        data = allCustomers.find((c: any) => c.id === id)
+      }
+      if (data) {
+        setCustomer(data as any)
+        const f: Record<string, string> = {}
+        Object.values(FIELD_GROUPS).flat().forEach(({ key }) => { f[key] = (data as any)[key] || '' })
+        // 폼에 포함되지 않은 필수 보존 필드
+        f.management_code = (data as any).management_code || ''
+        setForm(f); setOriginalForm(f)
       }
     } catch (err) {
       console.error('고객 로드 실패:', err)
@@ -154,7 +148,15 @@ export default function CustomerDetail() {
 
     try {
       if ((customer as any)._rowIndex) {
-        await updateCustomer((customer as any)._rowIndex, { ...form })
+        // 원본 customer의 전체 필드를 베이스로 + 폼 수정값 덮어쓰기
+        // → 관리코드 등 폼에 없는 필드가 빈값으로 저장되는 것 방지
+        const payload = { ...(customer as any), ...form }
+        if (!payload.management_code?.trim?.()) payload.management_code = (customer as any).management_code || ''
+        if (!payload.management_code) {
+          alert('관리코드가 누락되었습니다. 저장을 중단합니다.')
+          setSaving(false); return
+        }
+        await updateCustomer((customer as any)._rowIndex, payload)
       }
     } catch (err: any) { alert('저장 실패: ' + err.message); setSaving(false); return }
 
@@ -258,9 +260,11 @@ export default function CustomerDetail() {
         if (cardInfo.department) newForm.customer_department = cardInfo.department
         setForm(newForm)
 
-        // 구글시트에도 반영
+        // 구글시트에도 반영 (원본 customer 병합으로 관리코드 등 보존)
         if ((customer as any)._rowIndex) {
-          await updateCustomer((customer as any)._rowIndex, newForm)
+          const payload = { ...(customer as any), ...newForm }
+          if (!payload.management_code) payload.management_code = (customer as any).management_code || ''
+          await updateCustomer((customer as any)._rowIndex, payload)
         }
 
         alert(`명함 인식 완료!\n\n이름: ${cardInfo.name || '-'}\n전화: ${cardInfo.phone || '-'}\n이메일: ${cardInfo.email || '-'}\n부서: ${cardInfo.department || '-'}\n직급: ${cardInfo.position || '-'}`)

@@ -259,7 +259,19 @@ export default function Customers() {
     setSyncing(true)
     try {
       if (editingCustomer) {
-        await updateCustomer(editingCustomer._rowIndex, cleanForm)
+        // 방어 1) 원본 editingCustomer의 전체 필드를 먼저 깔고, 폼 수정값을 그 위에 덮어쓴다.
+        //        → 폼에 없는 필드(참조 컬럼 등)가 빈 값으로 저장되는 것 방지
+        // 방어 2) 관리코드는 읽기전용 컬럼이므로 원본 값을 항상 우선. 폼에서 비어있으면 원본 유지
+        const payload = { ...editingCustomer, ...cleanForm }
+        if (!payload.management_code?.trim?.()) {
+          payload.management_code = editingCustomer.management_code || ''
+        }
+        if (!payload.management_code) {
+          alert('관리코드가 누락되었습니다. 저장을 중단합니다. 관리자에게 문의해주세요.')
+          setSyncing(false)
+          return
+        }
+        await updateCustomer(editingCustomer._rowIndex, payload)
       } else {
         await appendCustomer(cleanForm)
       }
