@@ -2,7 +2,7 @@ import { useEffect, useState, useRef, useMemo, Fragment } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { fetchCustomers, appendCustomer, updateCustomer, deleteCustomer } from '../lib/googleSheets'
-import { Plus, Search, Edit2, Trash2, X, Upload, FileSpreadsheet, ChevronUp, ChevronDown, RotateCcw, RefreshCw } from 'lucide-react'
+import { Plus, Search, Edit2, Trash2, X, Upload, FileSpreadsheet, ChevronUp, ChevronDown, RotateCcw, RefreshCw, Filter } from 'lucide-react'
 import * as XLSX from 'xlsx'
 
 const CUSTOMER_FIELDS: { key: string; label: string; required?: boolean; type?: string; options?: string[]; default?: string }[] = [
@@ -51,6 +51,21 @@ const TABLE_COLUMNS = [
   'connection_status', 'connection_date', 'termination_date', 'erp_company',
 ]
 
+function FilterChip({ label, onClear }: { label: string; onClear: () => void }) {
+  return (
+    <span className="inline-flex items-center gap-1 pl-2.5 pr-1 py-1 bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs rounded-full font-medium">
+      {label}
+      <button
+        onClick={onClear}
+        className="p-0.5 hover:bg-emerald-200 rounded-full transition"
+        title="해제"
+      >
+        <X size={11} />
+      </button>
+    </span>
+  )
+}
+
 const emptyForm = () => {
   const f: any = {}
   CUSTOMER_FIELDS.forEach((field) => (f[field.key] = field.default || ''))
@@ -80,14 +95,26 @@ export default function Customers() {
   const urlStatus = searchParams.get('status') || ''
 
   // 필터 (항상 표시)
+  // ── 확정 필터 상태 (테이블에 실제 적용) ──
   const [filterStatus, setFilterStatus] = useState(urlStatus)
   const [filterManager, setFilterManager] = useState('')
   const [filterErp, setFilterErp] = useState('')
   const [filterConnection, setFilterConnection] = useState('')
-  const [filterReceptionFrom, setFilterReceptionFrom] = useState('')
-  const [filterReceptionTo, setFilterReceptionTo] = useState('')
-  const [filterOpeningFrom, setFilterOpeningFrom] = useState('')
-  const [filterOpeningTo, setFilterOpeningTo] = useState('')
+  const [filterDateType, setFilterDateType] = useState<'reception_date' | 'opening_date' | 'termination_date' | 'connection_date'>('reception_date')
+  const [filterDateFrom, setFilterDateFrom] = useState('')
+  const [filterDateTo, setFilterDateTo] = useState('')
+  const [dynamicFilters, setDynamicFilters] = useState<{ id: string; column: string; value: string }[]>([])
+
+  // ── 드래프트 필터 상태 (패널 안에서 편집 중, 적용하기 누르면 확정) ──
+  const [filtersOpen, setFiltersOpen] = useState(false)
+  const [draftStatus, setDraftStatus] = useState('')
+  const [draftManager, setDraftManager] = useState('')
+  const [draftErp, setDraftErp] = useState('')
+  const [draftConnection, setDraftConnection] = useState('')
+  const [draftDateType, setDraftDateType] = useState<'reception_date' | 'opening_date' | 'termination_date' | 'connection_date'>('reception_date')
+  const [draftDateFrom, setDraftDateFrom] = useState('')
+  const [draftDateTo, setDraftDateTo] = useState('')
+  const [draftDynamic, setDraftDynamic] = useState<{ id: string; column: string; value: string }[]>([])
 
   // 정렬 (접수일자 기준 내림차순 기본)
   const [sortKey, setSortKey] = useState<string>('reception_date')
@@ -149,10 +176,15 @@ export default function Customers() {
     if (filterManager) result = result.filter((c) => c.manager === filterManager)
     if (filterErp) result = result.filter((c) => c.erp_company === filterErp)
     if (filterConnection) result = result.filter((c) => c.connection_status === filterConnection)
-    if (filterReceptionFrom) result = result.filter((c) => c.reception_date && c.reception_date >= filterReceptionFrom)
-    if (filterReceptionTo) result = result.filter((c) => c.reception_date && c.reception_date <= filterReceptionTo)
-    if (filterOpeningFrom) result = result.filter((c) => c.opening_date && c.opening_date >= filterOpeningFrom)
-    if (filterOpeningTo) result = result.filter((c) => c.opening_date && c.opening_date <= filterOpeningTo)
+    if (filterDateFrom) result = result.filter((c) => (c as any)[filterDateType] && (c as any)[filterDateType] >= filterDateFrom)
+    if (filterDateTo) result = result.filter((c) => (c as any)[filterDateType] && (c as any)[filterDateType] <= filterDateTo)
+
+    // 동적 필터 (모든 컬럼 부분 일치)
+    dynamicFilters.forEach((df) => {
+      if (!df.column || !df.value.trim()) return
+      const q = df.value.trim().toLowerCase()
+      result = result.filter((c) => String((c as any)[df.column] ?? '').toLowerCase().includes(q))
+    })
 
     // 정렬
     result = [...result].sort((a, b) => {
@@ -164,27 +196,77 @@ export default function Customers() {
     })
 
     return result
-  }, [customers, search, filterStatus, filterManager, filterErp, filterConnection, sortKey, sortAsc])
+  }, [customers, search, filterStatus, filterManager, filterErp, filterConnection, filterDateType, filterDateFrom, filterDateTo, dynamicFilters, sortKey, sortAsc])
 
   // 페이지네이션
   const totalPages = Math.ceil(filtered.length / PAGE_SIZE)
   const paged = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
 
-  useEffect(() => { setPage(1) }, [search, filterStatus, filterManager, filterErp, filterConnection, filterReceptionFrom, filterReceptionTo, filterOpeningFrom, filterOpeningTo])
+  useEffect(() => { setPage(1) }, [search, filterStatus, filterManager, filterErp, filterConnection, filterDateFrom, filterDateTo, dynamicFilters])
 
-  const activeFilterCount = [filterStatus, filterManager, filterErp, filterConnection, filterReceptionFrom, filterReceptionTo, filterOpeningFrom, filterOpeningTo].filter(Boolean).length
+  const activeFilterCount = [filterStatus, filterManager, filterErp, filterConnection, filterDateFrom || filterDateTo].filter(Boolean).length
+    + dynamicFilters.filter((f) => f.column && f.value.trim()).length
 
-  const clearFilters = () => {
+  const DATE_TYPE_LABELS: Record<string, string> = {
+    reception_date: '신규접수일',
+    opening_date: '개설/이행일',
+    termination_date: '해지일자',
+    connection_date: '연계일자',
+  }
+
+  const clearAllFilters = () => {
     setFilterStatus('')
     setFilterManager('')
     setFilterErp('')
     setFilterConnection('')
-    setFilterReceptionFrom('')
-    setFilterReceptionTo('')
-    setFilterOpeningFrom('')
-    setFilterOpeningTo('')
+    setFilterDateFrom('')
+    setFilterDateTo('')
+    setDynamicFilters([])
     setSearch('')
   }
+
+  // 패널 열기: 확정값 → 드래프트 복사
+  const openFilterPanel = () => {
+    setDraftStatus(filterStatus)
+    setDraftManager(filterManager)
+    setDraftErp(filterErp)
+    setDraftConnection(filterConnection)
+    setDraftDateType(filterDateType)
+    setDraftDateFrom(filterDateFrom)
+    setDraftDateTo(filterDateTo)
+    setDraftDynamic(dynamicFilters.map((f) => ({ ...f })))
+    setFiltersOpen(true)
+  }
+
+  // 적용: 드래프트 → 확정
+  const applyFilters = () => {
+    setFilterStatus(draftStatus)
+    setFilterManager(draftManager)
+    setFilterErp(draftErp)
+    setFilterConnection(draftConnection)
+    setFilterDateType(draftDateType)
+    setFilterDateFrom(draftDateFrom)
+    setFilterDateTo(draftDateTo)
+    setDynamicFilters(draftDynamic)
+    setFiltersOpen(false)
+  }
+
+  // 드래프트 초기화 (패널 내부 버튼)
+  const resetDraft = () => {
+    setDraftStatus('')
+    setDraftManager('')
+    setDraftErp('')
+    setDraftConnection('')
+    setDraftDateType('reception_date')
+    setDraftDateFrom('')
+    setDraftDateTo('')
+    setDraftDynamic([])
+  }
+
+  const addDraftDynamic = () => setDraftDynamic((arr) => [...arr, { id: String(Date.now() + Math.random()), column: '', value: '' }])
+  const updateDraftDynamic = (id: string, patch: Partial<{ column: string; value: string }>) =>
+    setDraftDynamic((arr) => arr.map((f) => f.id === id ? { ...f, ...patch } : f))
+  const removeDraftDynamic = (id: string) => setDraftDynamic((arr) => arr.filter((f) => f.id !== id))
 
   const handleSort = (key: string) => {
     if (sortKey === key) {
@@ -516,73 +598,205 @@ export default function Customers() {
         />
       </div>
 
-      {/* 조건 필터 (항상 표시) */}
-      <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 mb-4">
-        <div className="flex items-center justify-between mb-3">
-          <span className="text-sm font-medium text-gray-700">조건 필터</span>
+      {/* 조건 필터 버튼 + 적용된 필터 칩 */}
+      <div className="mb-4 flex items-center gap-2 flex-wrap">
+        <button
+          onClick={openFilterPanel}
+          className="flex items-center gap-1.5 px-3 py-2 rounded-lg border border-gray-200 bg-white text-gray-700 hover:bg-gray-50 text-sm transition"
+        >
+          <Filter size={14} />
+          조건 필터
           {activeFilterCount > 0 && (
-            <button onClick={clearFilters} className="flex items-center gap-1 text-xs text-gray-400 hover:text-red-500 transition">
-              <RotateCcw size={12} /> 초기화
-            </button>
+            <span className="ml-1 px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-600 text-white">
+              {activeFilterCount}
+            </span>
           )}
-        </div>
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-3">
-          <div>
-            <label className="block text-xs text-gray-500 mb-1">개설상태</label>
-            <select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white focus:ring-2 focus:ring-emerald-500 outline-none">
-              <option value="">전체</option>
-              {filterOptions.statuses.map((s) => <option key={s} value={s}>{s}</option>)}
-            </select>
-          </div>
-          <div>
-            <label className="block text-xs text-gray-500 mb-1">담당자</label>
-            <select value={filterManager} onChange={(e) => setFilterManager(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white focus:ring-2 focus:ring-emerald-500 outline-none">
-              <option value="">전체</option>
-              {filterOptions.managers.map((m) => <option key={m} value={m}>{m}</option>)}
-            </select>
-          </div>
-          <div>
-            <label className="block text-xs text-gray-500 mb-1">ERP회사</label>
-            <select value={filterErp} onChange={(e) => setFilterErp(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white focus:ring-2 focus:ring-emerald-500 outline-none">
-              <option value="">전체</option>
-              {filterOptions.erps.map((e) => <option key={e} value={e}>{e}</option>)}
-            </select>
-          </div>
-          <div>
-            <label className="block text-xs text-gray-500 mb-1">연계상태</label>
-            <select value={filterConnection} onChange={(e) => setFilterConnection(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white focus:ring-2 focus:ring-emerald-500 outline-none">
-              <option value="">전체</option>
-              {filterOptions.connections.map((c) => <option key={c} value={c}>{c}</option>)}
-            </select>
-          </div>
-        </div>
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-          <div>
-            <label className="block text-xs text-gray-500 mb-1">신규접수일 (시작)</label>
-            <input type="date" value={filterReceptionFrom} onChange={(e) => setFilterReceptionFrom(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white focus:ring-2 focus:ring-emerald-500 outline-none" />
-          </div>
-          <div>
-            <label className="block text-xs text-gray-500 mb-1">신규접수일 (종료)</label>
-            <input type="date" value={filterReceptionTo} onChange={(e) => setFilterReceptionTo(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white focus:ring-2 focus:ring-emerald-500 outline-none" />
-          </div>
-          <div>
-            <label className="block text-xs text-gray-500 mb-1">개설/이행일 (시작)</label>
-            <input type="date" value={filterOpeningFrom} onChange={(e) => setFilterOpeningFrom(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white focus:ring-2 focus:ring-emerald-500 outline-none" />
-          </div>
-          <div>
-            <label className="block text-xs text-gray-500 mb-1">개설/이행일 (종료)</label>
-            <input type="date" value={filterOpeningTo} onChange={(e) => setFilterOpeningTo(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white focus:ring-2 focus:ring-emerald-500 outline-none" />
-          </div>
-        </div>
+        </button>
+
+        {/* 필터 칩 (X 버튼) */}
+        {filterStatus && (
+          <FilterChip label={`개설상태: ${filterStatus}`} onClear={() => setFilterStatus('')} />
+        )}
+        {filterManager && (
+          <FilterChip label={`담당자: ${filterManager}`} onClear={() => setFilterManager('')} />
+        )}
+        {filterErp && (
+          <FilterChip label={`ERP: ${filterErp}`} onClear={() => setFilterErp('')} />
+        )}
+        {filterConnection && (
+          <FilterChip label={`연계상태: ${filterConnection}`} onClear={() => setFilterConnection('')} />
+        )}
+        {(filterDateFrom || filterDateTo) && (
+          <FilterChip
+            label={`${DATE_TYPE_LABELS[filterDateType]}: ${filterDateFrom || '~'} ~ ${filterDateTo || '~'}`}
+            onClear={() => { setFilterDateFrom(''); setFilterDateTo('') }}
+          />
+        )}
+        {dynamicFilters.filter((f) => f.column && f.value.trim()).map((df) => {
+          const col = CUSTOMER_FIELDS.find((c) => c.key === df.column)
+          return (
+            <FilterChip
+              key={df.id}
+              label={`${col?.label || df.column}: ${df.value}`}
+              onClear={() => setDynamicFilters((arr) => arr.filter((x) => x.id !== df.id))}
+            />
+          )
+        })}
+        {activeFilterCount > 0 && (
+          <button onClick={clearAllFilters} className="flex items-center gap-1 text-xs text-gray-500 hover:text-red-500 transition ml-1">
+            <RotateCcw size={12} /> 전체 초기화
+          </button>
+        )}
       </div>
+
+      {/* 슬라이드인 필터 패널 */}
+      {filtersOpen && (
+        <>
+          {/* 오버레이 */}
+          <div
+            className="fixed inset-0 bg-black/40 z-40 transition-opacity"
+            onClick={() => setFiltersOpen(false)}
+          />
+          {/* 드로어 */}
+          <div className="fixed top-0 right-0 h-full w-full sm:w-[420px] bg-white shadow-2xl z-50 flex flex-col animate-slide-in-right">
+            {/* 헤더 */}
+            <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
+              <div className="flex items-center gap-2">
+                <Filter size={16} className="text-emerald-600" />
+                <h3 className="font-bold text-gray-800">조건 필터</h3>
+              </div>
+              <button
+                onClick={() => setFiltersOpen(false)}
+                className="p-1.5 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            {/* 스크롤 영역 */}
+            <div className="flex-1 overflow-y-auto px-5 py-4 space-y-5">
+              {/* 개설상태 */}
+              <div>
+                <label className="block text-xs font-semibold text-gray-500 mb-1.5">개설상태</label>
+                <select value={draftStatus} onChange={(e) => setDraftStatus(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none">
+                  <option value="">전체</option>
+                  {filterOptions.statuses.map((s) => <option key={s} value={s}>{s}</option>)}
+                </select>
+              </div>
+
+              {/* 담당자 */}
+              <div>
+                <label className="block text-xs font-semibold text-gray-500 mb-1.5">담당자</label>
+                <select value={draftManager} onChange={(e) => setDraftManager(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none">
+                  <option value="">전체</option>
+                  {filterOptions.managers.map((m) => <option key={m} value={m}>{m}</option>)}
+                </select>
+              </div>
+
+              {/* ERP회사 */}
+              <div>
+                <label className="block text-xs font-semibold text-gray-500 mb-1.5">ERP 회사</label>
+                <select value={draftErp} onChange={(e) => setDraftErp(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none">
+                  <option value="">전체</option>
+                  {filterOptions.erps.map((e) => <option key={e} value={e}>{e}</option>)}
+                </select>
+              </div>
+
+              {/* 연계상태 */}
+              <div>
+                <label className="block text-xs font-semibold text-gray-500 mb-1.5">연계상태</label>
+                <select value={draftConnection} onChange={(e) => setDraftConnection(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none">
+                  <option value="">전체</option>
+                  {filterOptions.connections.map((c) => <option key={c} value={c}>{c}</option>)}
+                </select>
+              </div>
+
+              {/* 날짜 필터 통합 */}
+              <div>
+                <label className="block text-xs font-semibold text-gray-500 mb-1.5">날짜 필터</label>
+                <select value={draftDateType} onChange={(e) => setDraftDateType(e.target.value as any)}
+                  className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none mb-2">
+                  {Object.entries(DATE_TYPE_LABELS).map(([k, v]) => (
+                    <option key={k} value={k}>{v}</option>
+                  ))}
+                </select>
+                <div className="grid grid-cols-2 gap-2">
+                  <input type="date" value={draftDateFrom} onChange={(e) => setDraftDateFrom(e.target.value)}
+                    placeholder="시작일"
+                    className="px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none" />
+                  <input type="date" value={draftDateTo} onChange={(e) => setDraftDateTo(e.target.value)}
+                    placeholder="종료일"
+                    className="px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none" />
+                </div>
+              </div>
+
+              {/* 동적 필터 */}
+              <div className="border-t border-gray-100 pt-4">
+                <div className="flex items-center justify-between mb-2">
+                  <label className="text-xs font-semibold text-gray-500">추가 필터 <span className="font-normal text-gray-400">(모든 컬럼)</span></label>
+                  <button onClick={addDraftDynamic} className="flex items-center gap-1 text-xs text-emerald-600 hover:text-emerald-700 font-medium">
+                    <Plus size={12} /> 필터 추가
+                  </button>
+                </div>
+                {draftDynamic.length === 0 ? (
+                  <p className="text-xs text-gray-400 italic">원하는 컬럼 + 값으로 추가 필터링</p>
+                ) : (
+                  <div className="space-y-2">
+                    {draftDynamic.map((df) => (
+                      <div key={df.id} className="flex gap-1.5 items-center">
+                        <select
+                          value={df.column}
+                          onChange={(e) => updateDraftDynamic(df.id, { column: e.target.value })}
+                          className="flex-1 px-2 py-1.5 border border-gray-200 rounded-lg text-xs bg-white focus:ring-2 focus:ring-emerald-500 outline-none"
+                        >
+                          <option value="">컬럼 선택...</option>
+                          {CUSTOMER_FIELDS.map((f) => (
+                            <option key={f.key} value={f.key}>{f.label}</option>
+                          ))}
+                        </select>
+                        <input
+                          type="text"
+                          value={df.value}
+                          onChange={(e) => updateDraftDynamic(df.id, { value: e.target.value })}
+                          placeholder="값"
+                          className="flex-1 px-2 py-1.5 border border-gray-200 rounded-lg text-xs bg-white focus:ring-2 focus:ring-emerald-500 outline-none"
+                        />
+                        <button
+                          onClick={() => removeDraftDynamic(df.id)}
+                          className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded transition"
+                          title="삭제"
+                        >
+                          <X size={12} />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* 하단 고정 버튼 */}
+            <div className="border-t border-gray-100 px-5 py-3 flex gap-2 bg-white">
+              <button
+                onClick={resetDraft}
+                className="flex-1 flex items-center justify-center gap-1.5 px-4 py-2.5 border border-gray-200 text-gray-700 rounded-lg hover:bg-gray-50 text-sm font-medium transition"
+              >
+                <RotateCcw size={14} /> 초기화
+              </button>
+              <button
+                onClick={applyFilters}
+                className="flex-[2] px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-sm font-semibold shadow-sm transition"
+              >
+                적용하기
+              </button>
+            </div>
+          </div>
+        </>
+      )}
 
       {/* 건수 */}
       <p className="text-sm text-gray-500 mb-3">
