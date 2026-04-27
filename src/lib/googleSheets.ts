@@ -183,13 +183,23 @@ function rowToCustomer(row: Record<string, string>, headers: string[]): any {
   return customer
 }
 
+// YYYY-MM-DD → YYYYMMDD (구글시트 저장용)
+function formatDateForSheet(v: string): string {
+  if (!v) return v
+  const m = v.match(/^(\d{4})-(\d{2})-(\d{2})$/)
+  if (m) return `${m[1]}${m[2]}${m[3]}`
+  return v
+}
+
 // 객체 → 구글시트 행 배열 변환
 function customerToRow(customer: any): string[] {
   const cnum = customer.customer_number || ''
   const bnum = customer.business_number || ''
   return SHEET_COLUMNS.map((key) => {
     if (key === 'duplicate_check') return String(cnum) + String(bnum)
-    return customer[key] || ''
+    const val = customer[key] || ''
+    if (DATE_FIELDS.has(key)) return formatDateForSheet(val)
+    return val
   })
 }
 
