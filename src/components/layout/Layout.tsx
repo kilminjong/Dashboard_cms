@@ -18,6 +18,7 @@ import { useState } from 'react'
 import { useNotification } from '../../hooks/useNotification'
 import { useAutoBackup } from '../../hooks/useAutoBackup'
 import { useAuth } from '../../hooks/useAuth'
+import QuickMemo from '../QuickMemo'
 
 const navItems = [
   { to: '/', icon: LayoutDashboard, label: '대시보드' },
@@ -40,7 +41,7 @@ const navItems = [
     ],
   },
   { to: '/marketing', icon: TrendingUp, label: '마케팅' },
-  { to: '/ai-assistant', icon: Bot, label: 'AI 어시스턴트' },
+  { to: '/ai-assistant', icon: Bot, label: 'AI 어시스턴트', disabled: true },
   { to: '/documents', icon: FolderOpen, label: '공유 문서함' },
   { to: '/calendar', icon: Calendar, label: '캘린더' },
   { to: '/profile', icon: UserCog, label: '정보수정' },
@@ -80,12 +81,12 @@ export default function Layout() {
 
       {/* 사이드바 */}
       <aside
-        className={`fixed lg:static inset-y-0 left-0 z-50 w-64 bg-gradient-to-b from-slate-800 to-slate-900 transform transition-transform duration-200 ease-in-out ${
+        className={`fixed lg:static inset-y-0 left-0 z-50 w-64 bg-gradient-to-b from-slate-800 to-slate-900 transform transition-transform duration-200 ease-in-out flex flex-col h-full ${
           sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
         }`}
       >
         {/* 로고 */}
-        <div className="flex items-center justify-between h-16 px-5">
+        <div className="flex items-center justify-between h-16 px-5 shrink-0">
           <div>
             <h1 className="text-base font-bold text-white tracking-tight">webcash</h1>
             <p className="text-[10px] text-slate-400 -mt-0.5">하나CMS팀</p>
@@ -96,7 +97,7 @@ export default function Layout() {
         </div>
 
         {/* 메뉴 */}
-        <nav className="px-3 py-4 space-y-0.5 flex-1">
+        <nav className="px-3 py-4 space-y-0.5 flex-1 overflow-y-auto">
           {navItems.map((item) => {
             if (item.children) {
               const isExpanded = expandedMenu === item.label
@@ -150,6 +151,20 @@ export default function Layout() {
               )
             }
 
+            if (item.disabled) {
+              return (
+                <div
+                  key={item.to}
+                  title="현재 사용 불가 (API 크레딧 소진)"
+                  className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-slate-600 cursor-not-allowed select-none"
+                >
+                  <item.icon size={18} />
+                  {item.label}
+                  <span className="ml-auto text-[10px] bg-slate-700 text-slate-400 px-1.5 py-0.5 rounded">일시중지</span>
+                </div>
+              )
+            }
+
             return (
               <NavLink
                 key={item.to}
@@ -172,7 +187,7 @@ export default function Layout() {
         </nav>
 
         {/* 로그아웃 */}
-        <div className="absolute bottom-0 left-0 right-0 border-t border-slate-700/50">
+        <div className="shrink-0 border-t border-slate-700/50">
           <div className="px-4 py-3 flex items-center gap-3">
             <div className="w-8 h-8 rounded-full bg-emerald-600 flex items-center justify-center text-white text-sm font-bold shrink-0">
               {(profile?.name || '?')[0]}
@@ -208,6 +223,9 @@ export default function Layout() {
           <Outlet />
         </main>
       </div>
+
+      {/* 빠른 메모 플로팅 버튼 */}
+      <QuickMemo />
     </div>
   )
 }

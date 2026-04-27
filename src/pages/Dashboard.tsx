@@ -3,7 +3,7 @@ import { supabase } from '../lib/supabase'
 import { fetchCustomers } from '../lib/googleSheets'
 import { useAuth } from '../hooks/useAuth'
 import { useNavigate } from 'react-router-dom'
-import { Users, UserCheck, Calendar, Sparkles, RefreshCw, Clock, XCircle, UserCircle, X } from 'lucide-react'
+import { Users, UserCheck, Calendar, Sparkles, RefreshCw, Clock, XCircle, UserCircle, X, Bell, ChevronDown } from 'lucide-react'
 import {
   ResponsiveContainer, Tooltip,
   XAxis, YAxis, CartesianGrid,
@@ -33,6 +33,15 @@ interface MyStats {
   canceled: number
 }
 
+interface ExpiringCustomer {
+  id: string
+  customer_name: string
+  manager: string
+  _expiryField: string
+  _expiryDate: string
+  _daysLeft: number
+}
+
 export default function Dashboard() {
   const { profile } = useAuth()
   const navigate = useNavigate()
@@ -54,6 +63,8 @@ export default function Dashboard() {
   const [monthlyAssignment, setMonthlyAssignment] = useState<{ name: string; total: number; linked: number }[]>([])
   const [aiSummary, setAiSummary] = useState('')
   const [aiLoading, setAiLoading] = useState(false)
+  const [expiringCustomers, setExpiringCustomers] = useState<ExpiringCustomer[]>([])
+  const [showExpiryAlert, setShowExpiryAlert] = useState(true)
 
   // 유저별 캐시 키
   const cacheKey = profile?.id ? `ai_summary_${profile.id}` : 'ai_summary'
@@ -100,6 +111,29 @@ export default function Dashboard() {
     const list = gsCustomers || []
     setAllCustomers(list)
     setTodayScheduleList(todaySchedules.data || [])
+
+    // 만료 예정 고객 계산 (오늘 ~ 30일 이내)
+    const todayMs = new Date(new Date().toDateString()).getTime()
+    const parseLocalDate = (s: string) => {
+      if (!s || !/^\d{4}-\d{2}-\d{2}$/.test(s)) return null
+      const [y, m, d] = s.split('-').map(Number)
+      return new Date(y, m - 1, d)
+    }
+    const expiring: ExpiringCustomer[] = []
+    list.forEach((c: any) => {
+      ;[
+        { field: '해지일', date: c.termination_date },
+        { field: '이행종료일', date: c.transition_end_date },
+      ].forEach(({ field, date }) => {
+        const d = parseLocalDate(date)
+        if (!d) return
+        const diff = Math.ceil((d.getTime() - todayMs) / 86400000)
+        if (diff >= 0 && diff <= 30) {
+          expiring.push({ id: c.id, customer_name: c.customer_name, manager: c.manager || '', _expiryField: field, _expiryDate: date, _daysLeft: diff })
+        }
+      })
+    })
+    setExpiringCustomers(expiring.sort((a, b) => a._daysLeft - b._daysLeft))
     const categorized = list.map((c) => categorizeStatus(c.opening_status))
 
     const opened = categorized.filter((s) => s === '개설완료').length
@@ -296,6 +330,52 @@ export default function Dashboard() {
   return (
     <div>
       <h2 className="text-2xl font-bold text-gray-800 mb-6">대시보드</h2>
+
+      {/* 만료 예정 알림 */}
+      {expiringCustomers.length > 0 && (
+        <div className={`rounded-xl mb-6 overflow-hidden border ${expiringCustomers.some(c => c._daysLeft <= 7) ? 'border-red-200 bg-red-50' : 'border-amber-200 bg-amber-50'}`}>
+          <button
+            onClick={() => setShowExpiryAlert(!showExpiryAlert)}
+            className="w-full flex items-center justify-between px-4 py-3"
+          >
+            <div className="flex items-center gap-2">
+              <Bell size={16} className={expiringCustomers.some(c => c._daysLeft <= 7) ? 'text-red-500' : 'text-amber-500'} />
+              <span className={`text-sm font-semibold ${expiringCustomers.some(c => c._daysLeft <= 7) ? 'text-red-700' : 'text-amber-700'}`}>
+                만료 예정 고객 알림
+              </span>
+              <span className={`text-xs px-2 py-0.5 rounded-full font-bold ${expiringCustomers.some(c => c._daysLeft <= 7) ? 'bg-red-200 text-red-700' : 'bg-amber-200 text-amber-700'}`}>
+                {expiringCustomers.length}건
+              </span>
+            </div>
+            <ChevronDown size={16} className={`transition-transform text-gray-400 ${showExpiryAlert ? 'rotate-180' : ''}`} />
+          </button>
+          {showExpiryAlert && (
+            <div className={`border-t divide-y ${expiringCustomers.some(c => c._daysLeft <= 7) ? 'border-red-200 divide-red-100' : 'border-amber-200 divide-amber-100'}`}>
+              {expiringCustomers.map((c, i) => (
+                <div
+                  key={`${c.id}-${c._expiryField}-${i}`}
+                  className="flex items-center justify-between px-4 py-2.5 cursor-pointer hover:bg-white/60 transition"
+                  onClick={() => navigate(`/customers/${c.id}`)}
+                >
+                  <div className="flex items-center gap-3">
+                    <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${
+                      c._daysLeft === 0 ? 'bg-red-600 text-white' :
+                      c._daysLeft <= 7 ? 'bg-red-200 text-red-700' :
+                      c._daysLeft <= 14 ? 'bg-orange-200 text-orange-700' :
+                      'bg-amber-100 text-amber-700'
+                    }`}>
+                      {c._daysLeft === 0 ? 'D-Day' : `D-${c._daysLeft}`}
+                    </span>
+                    <span className="text-sm font-medium text-gray-800">{c.customer_name}</span>
+                    <span className="text-xs text-gray-500 bg-white/70 px-1.5 py-0.5 rounded">{c._expiryField}</span>
+                  </div>
+                  <span className="text-xs text-gray-400 shrink-0 ml-2">{c.manager || '-'}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* AI 업무 요약 */}
       <div className="bg-gradient-to-r from-emerald-50 to-teal-50 border border-emerald-200 rounded-xl p-4 mb-6">
