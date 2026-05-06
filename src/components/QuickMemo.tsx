@@ -1,11 +1,13 @@
 import { useState, useEffect, useRef } from 'react'
 import { supabase } from '../lib/supabase'
-import { fetchCustomers } from '../lib/googleSheets'
+import { fetchCustomers, appendMemo } from '../lib/googleSheets'
+import { useAuth } from '../hooks/useAuth'
 import { MessageSquarePlus, X, Search, Save, CheckCircle, ExternalLink } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 
 export default function QuickMemo() {
   const navigate = useNavigate()
+  const { profile } = useAuth()
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState('')
   const [memo, setMemo] = useState('')
@@ -68,16 +70,22 @@ export default function QuickMemo() {
   const handleSave = async () => {
     if (!selected || !memo.trim()) return
     setSaving(true)
-    const { data: { user } } = await supabase.auth.getUser()
-    await supabase.from('customer_memos').insert([{
-      customer_id: selected.id,
-      content: memo.trim(),
-      created_by: user?.id,
-    }])
-    setSavedId(selected.id)
-    setMemo('')
-    setQuery('')
-    setSelected(null)
+    try {
+      const { data: { user } } = await supabase.auth.getUser()
+      const userName = profile?.name || user?.user_metadata?.name || ''
+      await appendMemo({
+        customer_id: selected.id,
+        customer_name: selected.customer_name || '',
+        content: memo.trim(),
+        created_by: userName,
+      })
+      setSavedId(selected.id)
+      setMemo('')
+      setQuery('')
+      setSelected(null)
+    } catch (err: any) {
+      alert('메모 저장 실패: ' + err.message)
+    }
     setSaving(false)
   }
 

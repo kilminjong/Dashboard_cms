@@ -294,4 +294,44 @@ export async function getMaxCode(): Promise<number> {
   return data.maxCode || 0
 }
 
+// ── 메모 API (구글시트 'memos' 시트) ──
+
+export async function fetchMemos(customerId?: string): Promise<any[]> {
+  const res = await fetch(EDGE_FUNCTION_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action: 'readMemos', customerId }),
+  })
+  const data = await res.json()
+  if (data.error) throw new Error(data.error)
+  return data.memos || []
+}
+
+export async function appendMemo(memo: {
+  customer_id: string
+  customer_name: string
+  content: string
+  created_by: string
+}): Promise<{ id: string; created_at: string }> {
+  const res = await fetch(EDGE_FUNCTION_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action: 'appendMemo', memo }),
+  })
+  const data = await res.json()
+  if (!data.success) throw new Error(JSON.stringify(data))
+  return { id: data.id, created_at: data.created_at }
+}
+
+export async function deleteMemo(rowIndex: number): Promise<boolean> {
+  const res = await fetch(EDGE_FUNCTION_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action: 'deleteMemo', rowIndex }),
+  })
+  const data = await res.json()
+  if (!data.success) throw new Error(JSON.stringify(data))
+  return true
+}
+
 export { SHEET_COLUMNS, HEADER_MAP }

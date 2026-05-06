@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
-import { fetchCustomers, updateCustomer } from '../lib/googleSheets'
+import { fetchCustomers, updateCustomer, fetchMemos, appendMemo, deleteMemo } from '../lib/googleSheets'
+import { useAuth } from '../hooks/useAuth'
 import type { Customer, CustomerMemo, CustomerHistory } from '../types'
 import { ArrowLeft, Save, Plus, Sparkles, RefreshCw, Clock, Trash2, Edit2, Upload, Image } from 'lucide-react'
 
@@ -72,6 +73,7 @@ const statusBadge = (status: string) => {
 export default function CustomerDetail() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
+  const { profile } = useAuth()
 
   const [customer, setCustomer] = useState<Customer | null>(null)
   const [form, setForm] = useState<Record<string, string>>({})
@@ -119,8 +121,14 @@ export default function CustomerDetail() {
   }
 
   const loadMemos = async () => {
-    const { data } = await supabase.from('customer_memos').select('*').eq('customer_id', id).order('created_at', { ascending: false })
-    setMemos(data || [])
+    if (!id) return
+    try {
+      const data = await fetchMemos(id)
+      setMemos(data as CustomerMemo[])
+    } catch (err) {
+      console.error('메모 로드 실패:', err)
+      setMemos([])
+    }
   }
 
   const loadHistory = async () => {
@@ -172,9 +180,21 @@ export default function CustomerDetail() {
   const handleAddMemo = async () => {
     if (!newMemo.trim() || !id) return
     setMemoLoading(true)
-    const { data: { user } } = await supabase.auth.getUser()
-    await supabase.from('customer_memos').insert([{ customer_id: id, content: newMemo.trim(), created_by: user?.id }])
-    setNewMemo(''); setMemoLoading(false); loadMemos()
+    try {
+      const { data: { user } } = await supabase.auth.getUser()
+      const userName = profile?.name || user?.user_metadata?.name || ''
+      await appendMemo({
+        customer_id: id,
+        customer_name: customer?.customer_name || '',
+        content: newMemo.trim(),
+        created_by: userName,
+      })
+      setNewMemo('')
+      await loadMemos()
+    } catch (err: any) {
+      alert('메모 저장 실패: ' + err.message)
+    }
+    setMemoLoading(false)
   }
 
   const handleAiMemoSummary = async () => {
@@ -478,11 +498,29 @@ export default function CustomerDetail() {
             {memos.length === 0 ? <p className="text-center py-10 text-gray-300 text-sm">등록된 메모가 없습니다.</p> : (
               <div className="divide-y divide-gray-50">
                 {memos.map((memo) => (
-                  <div key={memo.id} className="px-5 py-4">
+                  <div key={memo.id || (memo as any)._rowIndex} className="px-5 py-4">
                     <p className="text-sm text-gray-800 whitespace-pre-wrap">{memo.content}</p>
                     <div className="flex items-center justify-between mt-2">
-                      <p className="text-xs text-gray-400">{new Date(memo.created_at).toLocaleString('ko-KR')}</p>
-                      <button onClick={async () => { if (!confirm('삭제하시겠습니까?')) return; await supabase.from('customer_memos').delete().eq('id', memo.id); loadMemos() }} className="p-1 text-gray-300 hover:text-red-500 transition"><Trash2 size={14} /></button>
+                      <div className="flex items-center gap-2 text-xs text-gray-400">
+                        {memo.created_by && (
+                          <>
+                            <span className="font-medium text-gray-500">{memo.created_by}</span>
+                            <span className="text-gray-300">·</span>
+                          </>
+                        )}
+                        <span>{memo.created_at ? new Date(memo.created_at).toLocaleString('ko-KR') : ''}</span>
+                      </div>
+                      <button
+                        onClick={async () => {
+                          if (!confirm('삭제하시겠습니까?')) return
+                          const rowIdx = (memo as any)._rowIndex
+                          if (!rowIdx) return
+                          try { await deleteMemo(rowIdx); loadMemos() } catch (e: any) { alert('삭제 실패: ' + e.message) }
+                        }}
+                        className="p-1 text-gray-300 hover:text-red-500 transition"
+                      >
+                        <Trash2 size={14} />
+                      </button>
                     </div>
                   </div>
                 ))}
