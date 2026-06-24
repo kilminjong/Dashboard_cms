@@ -113,6 +113,9 @@ const HEADER_MAP: Record<string, string> = {
   '이메일3': 'contact_email3',
 }
 
+// 앞자리 0이 손실되면 안 되는 숫자 ID 필드 (고객번호, 사업자번호)
+const TEXT_NUMBER_FIELDS = new Set(['customer_number', 'business_number'])
+
 // 날짜 필드 정규화: "20190201" → "2019-02-01", "-" → ""
 const DATE_FIELDS = new Set([
   'reception_date',
@@ -136,6 +139,8 @@ function normalizeDate(v: string): string {
 
 function normalizeValue(dbKey: string, v: string): string {
   if (DATE_FIELDS.has(dbKey)) return normalizeDate(v)
+  // 숫자 ID 필드(고객번호/사업자번호)에 선행 아포스트로피가 섞여 들어온 경우 방어적으로 제거
+  if (TEXT_NUMBER_FIELDS.has(dbKey) && typeof v === 'string' && v.startsWith("'")) return v.slice(1)
   return v
 }
 
@@ -191,6 +196,12 @@ function formatDateForSheet(v: string): string {
   return v
 }
 
+// 앞자리 0이 있는 숫자 문자열을 시트가 숫자로 자동변환(0254324 → 254324)하지 않도록
+// 선행 아포스트로피로 텍스트 강제. 아포스트로피는 시트 표시/API 읽기 시 값에 포함되지 않음.
+function preserveLeadingZero(val: string): string {
+  return /^0\d+$/.test(val) ? `'${val}` : val
+}
+
 // 객체 → 구글시트 행 배열 변환
 function customerToRow(customer: any): string[] {
   const cnum = customer.customer_number || ''
@@ -199,6 +210,7 @@ function customerToRow(customer: any): string[] {
     if (key === 'duplicate_check') return String(cnum) + String(bnum)
     const val = customer[key] || ''
     if (DATE_FIELDS.has(key)) return formatDateForSheet(val)
+    if (TEXT_NUMBER_FIELDS.has(key)) return preserveLeadingZero(String(val))
     return val
   })
 }
