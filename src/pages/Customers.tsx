@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef, useMemo, Fragment } from 'react'
+import { useEffect, useState, useRef, useMemo } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { fetchCustomers, appendCustomer, updateCustomer, deleteCustomer } from '../lib/googleSheets'
@@ -38,7 +38,7 @@ const CUSTOMER_FIELDS: { key: string; label: string; required?: boolean; type?: 
   { key: 'erp_company', label: 'ERP회사' },
   { key: 'erp_type', label: 'ERP 종류', type: 'select', options: ['영림원', 'Amaranth10', 'ERP10', '옴니이솔', 'IU', 'ICUBE', 'SAP', '오직', '디모데'] },
   { key: 'erp_db', label: 'ERP DB' },
-  { key: 'connection_method', label: '연계방식', type: 'select', options: ['DB to DB', 'API', '3 Tire', 'RFC'] },
+  { key: 'connection_method', label: '연계방식', type: 'select', options: ['DB to DB', 'API', '3 Tier', 'RFC'] },
   { key: 'server_location', label: '서버PC 상세위치', type: 'select-other', options: ['내부', '전산실'] },
   { key: 'schedule_use', label: '스케줄사용여부', type: 'select', options: ['Y', 'N'] },
   { key: 'customer_ip', label: '고객사 IP' },
@@ -49,6 +49,20 @@ const CUSTOMER_FIELDS: { key: string; label: string; required?: boolean; type?: 
 const TABLE_COLUMNS = [
   'management_code', 'customer_name', 'customer_number', 'business_number', 'manager', 'opening_status', 'opening_date',
   'connection_status', 'connection_date', 'termination_date', 'erp_company',
+]
+
+// 등록/수정 모달 섹션 구성 (렌더링 전용 — CUSTOMER_FIELDS 순서/내용은 그대로 유지)
+const FORM_SECTIONS: { title: string; desc: string; keys: string[]; required?: boolean }[] = [
+  { title: '필수 정보', desc: '반드시 입력', required: true, keys: ['management_code', 'customer_name', 'business_number', 'customer_number', 'manager', 'reception_date', 'opening_status'] },
+  { title: '기본 · 분류', desc: '선택 입력', keys: ['build_type', 'management_type', 'construction_type', 'sensitive_customer', 'intimacy'] },
+  { title: '계약 · 상태', desc: '진행 단계 및 일자', keys: ['opening_date', 'connection_status', 'connection_date', 'termination_date'] },
+  { title: 'ERP · 서버', desc: '시스템 환경', keys: ['erp_company', 'erp_type', 'erp_db', 'connection_method', 'server_location', 'schedule_use', 'customer_ip'] },
+]
+// 담당자 1~3 필드 묶음 (탭 전환)
+const PERSON_SETS = [
+  ['customer_contact_person', 'customer_department', 'contact_phone', 'contact_email'],
+  ['customer_contact_person2', 'customer_department2', 'contact_phone2', 'contact_email2'],
+  ['customer_contact_person3', 'customer_department3', 'contact_phone3', 'contact_email3'],
 ]
 
 function FilterChip({ label, onClear }: { label: string; onClear: () => void }) {
@@ -79,6 +93,7 @@ export default function Customers() {
   const [showModal, setShowModal] = useState(false)
   const [editingCustomer, setEditingCustomer] = useState<any | null>(null)
   const [form, setForm] = useState<any>(emptyForm())
+  const [modalPerson, setModalPerson] = useState(0) // 등록/수정 모달 담당자 탭
   const [loading, setLoading] = useState(true)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
@@ -296,6 +311,7 @@ export default function Customers() {
       f.management_code = String(nextCode)
     } catch { /* 실패해도 수동 입력 가능 */ }
     setForm(f)
+    setModalPerson(0)
     setShowModal(true)
   }
 
@@ -304,7 +320,68 @@ export default function Customers() {
     const f: any = {}
     CUSTOMER_FIELDS.forEach(({ key }) => (f[key] = (customer as any)[key] || ''))
     setForm(f)
+    setModalPerson(0)
     setShowModal(true)
+  }
+
+  // 등록/수정 모달 단일 필드 렌더링 (기존 입력 로직 그대로 유지 + 상태는 세그먼트 버튼)
+  const renderModalField = (field: any) => {
+    const v = form[field.key] || ''
+    if ((field.key === 'opening_status' || field.key === 'connection_status') && field.options) {
+      return (
+        <div className="flex flex-wrap gap-1.5">
+          {field.options.map((o: string) => {
+            const active = v === o
+            return (
+              <button key={o} type="button" onClick={() => setForm({ ...form, [field.key]: active ? '' : o })}
+                className={`h-8 px-2.5 rounded-lg text-xs font-semibold border inline-flex items-center gap-1 transition ${active ? 'bg-emerald-600 border-emerald-600 text-white' : 'bg-white border-gray-300 text-gray-500 hover:border-emerald-400'}`}>
+                <span className={`w-1.5 h-1.5 rounded-full ${active ? 'bg-white' : 'bg-gray-300'}`} />{o}
+              </button>
+            )
+          })}
+        </div>
+      )
+    }
+    if (field.type === 'select' && field.options) {
+      return (
+        <select value={v} onChange={(e) => setForm({ ...form, [field.key]: e.target.value })}
+          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent outline-none text-sm bg-white">
+          <option value="">선택하세요</option>
+          {field.options.map((opt: string) => <option key={opt} value={opt}>{opt}</option>)}
+        </select>
+      )
+    }
+    if (field.type === 'select-other' && field.options) {
+      return (
+        <div className="flex gap-2">
+          <select value={field.options.includes(v) ? v : v ? '기타' : ''}
+            onChange={(e) => { if (e.target.value === '기타') setForm({ ...form, [field.key]: '' }); else setForm({ ...form, [field.key]: e.target.value }) }}
+            className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent outline-none text-sm bg-white">
+            <option value="">선택하세요</option>
+            {field.options.map((opt: string) => <option key={opt} value={opt}>{opt}</option>)}
+            <option value="기타">기타(직접입력)</option>
+          </select>
+          {v && !field.options.includes(v) && (
+            <input type="text" value={v} onChange={(e) => setForm({ ...form, [field.key]: e.target.value })}
+              className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent outline-none text-sm" placeholder="직접 입력" />
+          )}
+        </div>
+      )
+    }
+    if (field.key === 'management_code') {
+      return (
+        <input type="text" value={v} readOnly title="관리코드는 자동 생성됩니다"
+          className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm bg-gray-100 text-gray-500 cursor-not-allowed" />
+      )
+    }
+    return (
+      <input type={field.type || 'text'} value={v}
+        onChange={(e) => { let val = e.target.value; if (field.key === 'business_number' || field.key === 'customer_number') val = val.replace(/[^0-9]/g, ''); setForm({ ...form, [field.key]: val }) }}
+        maxLength={field.key === 'business_number' ? 10 : field.key === 'customer_number' ? 9 : undefined}
+        inputMode={field.key === 'business_number' || field.key === 'customer_number' ? 'numeric' : undefined}
+        placeholder={field.key === 'business_number' ? '숫자 10자리' : field.key === 'customer_number' ? '숫자 9자리' : undefined}
+        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent outline-none text-sm" />
+    )
   }
 
   const handleSave = async () => {
@@ -986,89 +1063,62 @@ export default function Customers() {
               </button>
             </div>
 
-            {(() => {
-              const requiredCount = CUSTOMER_FIELDS.filter((f) => f.required).length
-              return (
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  {CUSTOMER_FIELDS.map((field, idx) => (
-                    <Fragment key={field.key}>
-                      {idx === requiredCount && (
-                        <div className="col-span-1 sm:col-span-2 border-t border-gray-200 pt-2 mt-1">
-                          <p className="text-xs text-gray-400">선택 입력사항</p>
+            <div className="space-y-4">
+              {FORM_SECTIONS.map((sec) => (
+                <section key={sec.title} className={`rounded-xl border overflow-hidden ${sec.required ? 'border-emerald-200' : 'border-gray-100'}`}>
+                  <div className="flex items-center gap-2 px-4 py-2.5 border-b border-gray-100 bg-gray-50/60">
+                    <span className="text-sm font-bold text-gray-800">{sec.title}</span>
+                    <span className="text-xs text-gray-400 ml-auto">{sec.desc}</span>
+                  </div>
+                  <div className="p-4 grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-3">
+                    {sec.keys.map((key) => {
+                      const field = CUSTOMER_FIELDS.find((f) => f.key === key)
+                      if (!field) return null
+                      const isSeg = field.key === 'opening_status' || field.key === 'connection_status'
+                      return (
+                        <div key={key} className={isSeg ? 'sm:col-span-2' : ''}>
+                          <label className="block text-xs font-medium text-gray-600 mb-1">
+                            {field.label}{field.required && <span className="text-rose-500 font-bold ml-0.5">*</span>}
+                          </label>
+                          {renderModalField(field)}
                         </div>
-                      )}
-                      <div className={field.required ? 'bg-blue-50/60 border border-blue-100 rounded-lg p-2.5' : ''}>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">
-                          {field.label} {field.required && <span className="text-red-500">*</span>}
-                        </label>
-                        {field.type === 'select' && field.options ? (
-                          <select
-                            value={form[field.key]}
-                            onChange={(e) => setForm({ ...form, [field.key]: e.target.value })}
-                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent outline-none text-sm bg-white"
-                          >
-                            <option value="">선택하세요</option>
-                            {field.options.map((opt) => (
-                              <option key={opt} value={opt}>{opt}</option>
-                            ))}
-                          </select>
-                        ) : field.type === 'select-other' && field.options ? (
-                          <div className="flex gap-2">
-                            <select
-                              value={field.options.includes(form[field.key]) ? form[field.key] : form[field.key] ? '기타' : ''}
-                              onChange={(e) => {
-                                if (e.target.value === '기타') setForm({ ...form, [field.key]: '' })
-                                else setForm({ ...form, [field.key]: e.target.value })
-                              }}
-                              className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent outline-none text-sm bg-white"
-                            >
-                              <option value="">선택하세요</option>
-                              {field.options.map((opt) => (
-                                <option key={opt} value={opt}>{opt}</option>
-                              ))}
-                              <option value="기타">기타(직접입력)</option>
-                            </select>
-                            {form[field.key] && !field.options.includes(form[field.key]) && (
-                              <input
-                                type="text"
-                                value={form[field.key]}
-                                onChange={(e) => setForm({ ...form, [field.key]: e.target.value })}
-                                className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent outline-none text-sm"
-                                placeholder="직접 입력"
-                              />
-                            )}
-                          </div>
-                        ) : field.key === 'management_code' ? (
-                          <input
-                            type="text"
-                            value={form[field.key]}
-                            readOnly
-                            className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm bg-gray-100 text-gray-500 cursor-not-allowed"
-                            title="관리코드는 자동 생성됩니다"
-                          />
-                        ) : (
-                          <input
-                            type={field.type || 'text'}
-                            value={form[field.key]}
-                            onChange={(e) => {
-                              let val = e.target.value
-                              if (field.key === 'business_number' || field.key === 'customer_number') {
-                                val = val.replace(/[^0-9]/g, '')
-                              }
-                              setForm({ ...form, [field.key]: val })
-                            }}
-                            maxLength={field.key === 'business_number' ? 10 : field.key === 'customer_number' ? 9 : undefined}
-                            inputMode={field.key === 'business_number' || field.key === 'customer_number' ? 'numeric' : undefined}
-                            placeholder={field.key === 'business_number' ? '숫자 10자리' : field.key === 'customer_number' ? '숫자 9자리' : undefined}
-                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent outline-none text-sm"
-                          />
-                        )}
-                      </div>
-                    </Fragment>
-                  ))}
+                      )
+                    })}
+                  </div>
+                </section>
+              ))}
+
+              {/* 담당자 (탭 전환) */}
+              <section className="rounded-xl border border-gray-100 overflow-hidden">
+                <div className="flex items-center gap-2 px-4 py-2.5 border-b border-gray-100 bg-gray-50/60">
+                  <span className="text-sm font-bold text-gray-800">담당자</span>
+                  <span className="text-xs text-gray-400 ml-auto">최대 3명 · 탭 전환</span>
                 </div>
-              )
-            })()}
+                <div className="flex gap-1.5 px-4 pt-3">
+                  {PERSON_SETS.map((set, i) => {
+                    const filled = !!form[set[0]]
+                    return (
+                      <button key={i} type="button" onClick={() => setModalPerson(i)}
+                        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-t-lg text-xs font-bold border border-b-0 transition ${modalPerson === i ? 'bg-white text-gray-800 border-gray-200 -mb-px' : 'bg-gray-50 text-gray-400 border-transparent'}`}>
+                        <span className={`w-1.5 h-1.5 rounded-full ${filled ? 'bg-emerald-500' : 'bg-gray-300'}`} />담당자 {i + 1}
+                      </button>
+                    )
+                  })}
+                </div>
+                <div className="p-4 border-t border-gray-100 grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-3">
+                  {PERSON_SETS[modalPerson].map((key) => {
+                    const field = CUSTOMER_FIELDS.find((f) => f.key === key)
+                    if (!field) return null
+                    return (
+                      <div key={key}>
+                        <label className="block text-xs font-medium text-gray-600 mb-1">{field.label.replace(/^담당자\d\s*/, '')}</label>
+                        {renderModalField(field)}
+                      </div>
+                    )
+                  })}
+                </div>
+              </section>
+            </div>
 
             <div className="flex gap-3 mt-6">
               <button onClick={() => setShowModal(false)}
