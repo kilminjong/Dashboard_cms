@@ -1058,20 +1058,24 @@ export default function Customers() {
         )}
       </div>
 
-      {/* 등록/수정 모달 */}
+      {/* 등록/수정 드로어 (우측 슬라이드) */}
       {showModal && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto p-6">
-            <div className="flex items-center justify-between mb-6">
-              <h3 className="text-lg font-bold text-gray-800">
-                {editingCustomer ? '고객 수정' : '고객 등록'}
-              </h3>
-              <button onClick={() => setShowModal(false)} className="p-1 text-gray-400 hover:text-gray-600">
-                <X size={20} />
+        <>
+          <div className="fixed inset-0 bg-black/40 z-40" onClick={() => setShowModal(false)} />
+          <div className="fixed top-0 right-0 h-full w-full sm:w-[520px] bg-white shadow-2xl z-50 flex flex-col animate-slide-in-right">
+            {/* 헤더 (고정) */}
+            <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 shrink-0">
+              <div>
+                <h3 className="text-base font-bold text-gray-800">{editingCustomer ? '고객 수정' : '고객 등록'}</h3>
+                <p className="text-xs text-gray-400 mt-0.5">{editingCustomer ? '고객 정보를 수정합니다' : '새 고객 정보를 입력하세요'}</p>
+              </div>
+              <button onClick={() => setShowModal(false)} className="w-8 h-8 grid place-items-center rounded-lg border border-gray-200 text-gray-400 hover:bg-gray-50 transition">
+                <X size={18} />
               </button>
             </div>
 
-            <div className="space-y-4">
+            {/* 본문 (스크롤) */}
+            <div className="flex-1 overflow-y-auto p-5 space-y-4 bg-gray-50/40">
               {FORM_SECTIONS.map((sec) => (
                 <section key={sec.title} className={`rounded-xl border overflow-hidden ${sec.required ? 'border-emerald-200' : 'border-gray-100'}`}>
                   <div className="flex items-center gap-2 px-4 py-2.5 border-b border-gray-100 bg-gray-50/60">
@@ -1128,18 +1132,19 @@ export default function Customers() {
               </section>
             </div>
 
-            <div className="flex gap-3 mt-6">
+            {/* 하단 고정 버튼 */}
+            <div className="flex gap-3 px-5 py-3.5 border-t border-gray-100 shrink-0 bg-white">
               <button onClick={() => setShowModal(false)}
                 className="flex-1 py-2.5 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition text-sm font-medium">
                 취소
               </button>
               <button onClick={handleSave}
-                className="flex-1 py-2.5 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition text-sm font-medium">
+                className="flex-[2] py-2.5 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition text-sm font-medium">
                 {editingCustomer ? '수정' : '등록'}
               </button>
             </div>
           </div>
-        </div>
+        </>
       )}
 
       {/* 일괄등록 미리보기 모달 */}
