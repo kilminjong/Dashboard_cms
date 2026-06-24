@@ -110,6 +110,7 @@ export default function CustomerDetail() {
   const [cardUploading, setCardUploading] = useState(false)
   const [activePerson, setActivePerson] = useState(0) // 담당자 탭 0~2
   const [activeSec, setActiveSec] = useState('sec-req') // 좌측 네비 현재 위치
+  const [otherMode, setOtherMode] = useState<Set<string>>(new Set()) // '기타' 직접입력 모드인 필드
 
   useEffect(() => {
     if (id) { loadCustomer(); loadMemos(); loadHistory() }
@@ -117,6 +118,7 @@ export default function CustomerDetail() {
 
   // 수정 모드: 스크롤 위치에 따라 좌측 네비 활성 섹션 표시
   useEffect(() => {
+    setOtherMode(new Set()) // 편집 진입/이탈 시 '기타' 모드 초기화
     if (!editing) return
     const ids = [...SECTION_ORDER.map((g) => SECTION_META[g].id), 'sec-ppl']
     const io = new IntersectionObserver(
@@ -333,60 +335,134 @@ export default function CustomerDetail() {
   if (loading) return <div className="flex items-center justify-center py-20"><RefreshCw size={24} className="animate-spin text-emerald-500" /></div>
   if (!customer) return <div className="text-center py-20"><p className="text-gray-400 mb-4">고객 정보를 찾을 수 없습니다.</p><button onClick={() => navigate('/customers')} className="text-emerald-600 hover:underline text-sm">목록으로</button></div>
 
-  // 전체현황 렌더링 함수
-  const renderOverview = () => (
-    <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-6">
-      <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-        <div className="bg-blue-50 px-4 py-2 border-b border-blue-100"><span className="text-sm font-semibold text-blue-700">고객 / 계약 정보</span></div>
-        <div className="text-xs">
-          {[
-            ['고객명', form.customer_name], ['사업자번호', form.business_number], ['고객번호', form.customer_number],
-            ['구축구분', form.build_type], ['관리구분', form.management_type], ['구축형', form.construction_type],
-            ['담당자', form.manager], ['주소', form.address], ['접수일', form.reception_date],
-            ['개설상태', form.opening_status], ['개설일', form.opening_date],
-            ['연계상태', form.connection_status], ['연계일자', form.connection_date],
-            ['해지일자', form.termination_date], ['CMS IP', form.cms_ip], ['민감고객', form.sensitive_customer], ['친밀도', form.intimacy],
-          ].map(([label, val], i) => (
-            <div key={label} className={`flex ${i % 2 === 0 ? 'bg-white' : 'bg-gray-50'}`}>
-              <span className="px-3 py-2 w-24 shrink-0 font-medium text-gray-500 border-r border-gray-100">{label}</span>
-              <span className="px-3 py-2 text-gray-800">
-                {label === '개설상태' && val ? <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${statusBadge(val)}`}>{val}</span> : val || '-'}
-              </span>
-            </div>
-          ))}
-        </div>
-      </div>
-      <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-        <div className="bg-purple-50 px-4 py-2 border-b border-purple-100"><span className="text-sm font-semibold text-purple-700">ERP / 서버 정보</span></div>
-        <div className="text-xs">
-          {[
-            ['ERP회사', form.erp_company], ['ERP종류', form.erp_type], ['ERP DB', form.erp_db],
-            ['연계방식', form.connection_method], ['서버위치', form.server_location],
-            ['스케줄사용', form.schedule_use], ['고객사 IP', form.customer_ip], ['CMS IP', form.cms_ip],
-          ].map(([label, val], i) => (
-            <div key={label} className={`flex ${i % 2 === 0 ? 'bg-white' : 'bg-gray-50'}`}>
-              <span className="px-3 py-2 w-24 shrink-0 font-medium text-gray-500 border-r border-gray-100">{label}</span>
-              <span className="px-3 py-2 text-gray-800">{val || '-'}</span>
-            </div>
-          ))}
-        </div>
-        <div className="bg-amber-50 px-4 py-2 border-t border-b border-amber-100"><span className="text-sm font-semibold text-amber-700">담당자 정보</span></div>
-        <div className="text-xs">
-          {[
-            ['담당자1', form.customer_contact_person], ['부서1', form.customer_department],
-            ['연락처1', form.contact_phone], ['이메일1', form.contact_email],
-            ...(form.customer_contact_person2 ? [['담당자2', form.customer_contact_person2], ['부서2', form.customer_department2], ['연락처2', form.contact_phone2], ['이메일2', form.contact_email2]] : []),
-            ...(form.customer_contact_person3 ? [['담당자3', form.customer_contact_person3], ['부서3', form.customer_department3], ['연락처3', form.contact_phone3], ['이메일3', form.contact_email3]] : []),
-          ].map(([label, val], i) => (
-            <div key={label + i} className={`flex ${i % 2 === 0 ? 'bg-white' : 'bg-gray-50'}`}>
-              <span className="px-3 py-2 w-24 shrink-0 font-medium text-gray-500 border-r border-gray-100">{label}</span>
-              <span className="px-3 py-2 text-gray-800">{val || '-'}</span>
-            </div>
-          ))}
-        </div>
-      </div>
+  // 진행 단계 색상 판단
+  const stepTone = (kind: string, status?: string): string => {
+    if (kind === 'reception') return status ? 'done' : 'todo'
+    if (kind === 'opening') {
+      if (!status) return 'todo'
+      if (status.includes('완료')) return 'done'
+      if (status.includes('취소')) return 'cancel'
+      if (status.includes('진행')) return 'now'
+      return 'wait'
+    }
+    if (kind === 'connection') {
+      if (!status) return 'todo'
+      if (status.includes('완료')) return 'done'
+      if (status.includes('진행')) return 'now'
+      return 'wait'
+    }
+    return 'todo'
+  }
+  const TONE_ICO: Record<string, string> = {
+    done: 'bg-emerald-100 text-emerald-700',
+    now: 'bg-blue-100 text-blue-700 ring-4 ring-blue-50',
+    wait: 'bg-amber-100 text-amber-700',
+    cancel: 'bg-red-100 text-red-600',
+    todo: 'bg-gray-100 text-gray-400',
+  }
+
+  // 정보 행
+  const Row = ({ k, v, mono }: { k: string; v?: string; mono?: boolean }) => (
+    <div className="flex items-baseline gap-3 px-4 py-2 odd:bg-[#FAFCFB]">
+      <span className="w-[88px] shrink-0 text-xs font-semibold text-gray-400">{k}</span>
+      <span className={`text-[13px] text-gray-800 break-all ${mono ? 'tabular-nums' : ''} ${v ? '' : 'text-gray-300'}`}>{v || '-'}</span>
     </div>
   )
+
+  // 담당자 카드
+  const persons = [
+    { n: form.customer_contact_person, d: form.customer_department, p: form.contact_phone, e: form.contact_email },
+    { n: form.customer_contact_person2, d: form.customer_department2, p: form.contact_phone2, e: form.contact_email2 },
+    { n: form.customer_contact_person3, d: form.customer_department3, p: form.contact_phone3, e: form.contact_email3 },
+  ]
+
+  // 전체현황 렌더링 함수
+  const renderOverview = () => {
+    const steps = [
+      { lab: '신규접수', val: form.reception_date ? '접수완료' : '미접수', date: form.reception_date, tone: stepTone('reception', form.reception_date), mark: '✓' },
+      { lab: '개설 / 이행', val: form.opening_status || '미정', date: form.opening_date, tone: stepTone('opening', form.opening_status), mark: '2' },
+      { lab: 'ERP 연계', val: form.connection_status || '연계대기', date: form.connection_date, tone: stepTone('connection', form.connection_status), mark: '3' },
+      { lab: '해지', val: form.termination_date ? '해지' : '해당없음', date: form.termination_date, tone: form.termination_date ? 'cancel' : 'todo', mark: form.termination_date ? '!' : '·' },
+    ]
+    return (
+      <div className="space-y-4 mb-6">
+        {/* 진행 현황 스테퍼 */}
+        <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+          <div className="grid grid-cols-2 md:grid-cols-4">
+            {steps.map((s, i) => (
+              <div key={s.lab} className={`p-4 border-gray-100 ${i % 2 === 1 ? 'border-l' : ''} ${i >= 2 ? 'border-t md:border-t-0' : ''} ${i >= 1 ? 'md:border-l' : ''}`}>
+                <div className="text-[11px] font-semibold text-gray-400 mb-2 tabular-nums">{s.date || (s.tone === 'now' ? '진행중' : s.tone === 'wait' ? '대기' : '—')}</div>
+                <div className="flex items-center gap-2.5">
+                  <span className={`w-7 h-7 rounded-full grid place-items-center text-xs font-extrabold shrink-0 ${TONE_ICO[s.tone]}`}>{s.mark}</span>
+                  <div className="min-w-0">
+                    <div className="text-[11px] text-gray-400 font-semibold">{s.lab}</div>
+                    <div className={`text-sm font-bold truncate ${s.tone === 'todo' ? 'text-gray-400' : 'text-gray-800'}`}>{s.val}</div>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* 정보 그리드 */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+            <div className="flex items-center gap-2.5 px-4 py-3 border-b border-gray-100">
+              <span className="w-6 h-6 rounded-lg grid place-items-center bg-emerald-50 text-emerald-600"><LayoutGrid size={13} /></span>
+              <h3 className="text-sm font-bold text-gray-800">고객 기본정보</h3>
+            </div>
+            <div className="py-1.5">
+              <Row k="구축구분" v={form.build_type} />
+              <Row k="관리구분" v={form.management_type} />
+              <Row k="구축형" v={form.construction_type} />
+              <Row k="주소" v={form.address} />
+              <Row k="민감고객" v={form.sensitive_customer} />
+              <Row k="친밀도" v={form.intimacy} />
+            </div>
+          </div>
+          <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+            <div className="flex items-center gap-2.5 px-4 py-3 border-b border-gray-100">
+              <span className="w-6 h-6 rounded-lg grid place-items-center bg-violet-50 text-violet-600"><Server size={13} /></span>
+              <h3 className="text-sm font-bold text-gray-800">ERP · 서버 정보</h3>
+            </div>
+            <div className="py-1.5">
+              <Row k="ERP회사" v={form.erp_company} />
+              <Row k="ERP종류" v={form.erp_type} />
+              <Row k="ERP DB" v={form.erp_db} />
+              <Row k="연계방식" v={form.connection_method} />
+              <Row k="서버위치" v={form.server_location} />
+              <Row k="스케줄" v={form.schedule_use} />
+              <Row k="고객사 IP" v={form.customer_ip} mono />
+              <Row k="CMS IP" v={form.cms_ip} mono />
+            </div>
+          </div>
+        </div>
+
+        {/* 담당자 카드 */}
+        <div>
+          <p className="text-[11px] font-bold tracking-wider text-gray-400 uppercase mb-2 ml-1">담당자</p>
+          <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden grid grid-cols-1 md:grid-cols-3">
+            {persons.map((p, i) => (
+              <div key={i} className={`p-4 border-gray-100 ${i >= 1 ? 'border-t md:border-t-0 md:border-l' : ''}`}>
+                {p.n ? (
+                  <>
+                    <div className="flex items-center gap-2.5 mb-2.5">
+                      <span className="w-8 h-8 rounded-full grid place-items-center bg-emerald-50 text-emerald-700 font-extrabold text-sm shrink-0">{p.n.slice(0, 1)}</span>
+                      <div className="min-w-0"><div className="text-sm font-bold text-gray-800 truncate">{p.n}</div>{p.d && <div className="text-[11px] text-gray-400 font-semibold">{p.d}</div>}</div>
+                    </div>
+                    {p.p && <a href={`tel:${p.p}`} className="flex items-center gap-2 text-[13px] text-gray-600 hover:text-emerald-700 py-0.5"><span className="text-gray-400 text-xs w-4 text-center">☎</span><span className="tabular-nums">{p.p}</span></a>}
+                    {p.e && <a href={`mailto:${p.e}`} className="flex items-center gap-2 text-[13px] text-gray-600 hover:text-emerald-700 py-0.5 break-all"><span className="text-gray-400 text-xs w-4 text-center">✉</span>{p.e}</a>}
+                  </>
+                ) : (
+                  <div className="h-full min-h-[72px] grid place-items-center text-xs text-gray-300">담당자 {i + 1} 미등록</div>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    )
+  }
 
   // 필드 렌더링
   const renderField = (field: any) => {
@@ -405,9 +481,21 @@ export default function CustomerDetail() {
       return <select value={form[field.key] || ''} onChange={(e) => setForm({ ...form, [field.key]: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white focus:ring-2 focus:ring-emerald-500 outline-none"><option value="">선택</option>{field.options.map((o: string) => <option key={o} value={o}>{o}</option>)}</select>
     }
     if (field.type === 'select-other' && field.options) {
-      return <div className="flex gap-2">
-        <select value={field.options.includes(form[field.key]) ? form[field.key] : form[field.key] ? '기타' : ''} onChange={(e) => { if (e.target.value === '기타') setForm({ ...form, [field.key]: '' }); else setForm({ ...form, [field.key]: e.target.value }) }} className="px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white focus:ring-2 focus:ring-emerald-500 outline-none"><option value="">선택</option>{field.options.map((o: string) => <option key={o} value={o}>{o}</option>)}<option value="기타">기타</option></select>
-        {!field.options.includes(form[field.key]) && form[field.key] !== '' && <input type="text" value={form[field.key] || ''} onChange={(e) => setForm({ ...form, [field.key]: e.target.value })} className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 outline-none" placeholder="직접 입력" />}
+      const cur = form[field.key] || ''
+      // '기타' 모드 판단: 직접 선택했거나(otherMode), 저장된 값이 옵션에 없는 직접입력 값일 때
+      const isOther = otherMode.has(field.key) || (cur !== '' && !field.options.includes(cur))
+      return <div className="flex flex-col gap-2">
+        <select value={isOther ? '기타' : cur}
+          onChange={(e) => {
+            if (e.target.value === '기타') { setOtherMode((p) => new Set(p).add(field.key)); setForm({ ...form, [field.key]: '' }) }
+            else { setOtherMode((p) => { const n = new Set(p); n.delete(field.key); return n }); setForm({ ...form, [field.key]: e.target.value }) }
+          }}
+          className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white focus:ring-2 focus:ring-emerald-500 outline-none">
+          <option value="">선택</option>
+          {field.options.map((o: string) => <option key={o} value={o}>{o}</option>)}
+          <option value="기타">기타(직접입력)</option>
+        </select>
+        {isOther && <input type="text" value={cur} onChange={(e) => setForm({ ...form, [field.key]: e.target.value })} className="w-full px-3 py-2 border border-emerald-400 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 outline-none" placeholder="직접 입력" autoFocus />}
       </div>
     }
     return <input type={field.type || 'text'} value={form[field.key] || ''} onChange={(e) => { let v = e.target.value; if (field.key === 'business_number' || field.key === 'customer_number') v = v.replace(/[^0-9]/g, ''); setForm({ ...form, [field.key]: v }) }} maxLength={field.key === 'business_number' ? 10 : field.key === 'customer_number' ? 9 : undefined} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 outline-none" />
@@ -415,21 +503,29 @@ export default function CustomerDetail() {
 
   return (
     <div className="max-w-5xl mx-auto">
-      {/* 헤더 */}
-      <div className="flex items-center gap-3 mb-4">
-        <button onClick={() => navigate('/customers')} className="p-2 hover:bg-gray-100 rounded-lg transition"><ArrowLeft size={20} className="text-gray-500" /></button>
-        <div className="flex-1 min-w-0">
-          <h2 className="text-xl font-bold text-gray-800 truncate">{customer.customer_name}</h2>
-          <div className="flex flex-wrap items-center gap-2 mt-0.5">
-            <span className="text-sm text-gray-500">{customer.business_number || '-'}</span>
-            <span className="text-gray-300">·</span>
-            <span className="text-sm text-gray-500">{customer.manager || '-'}</span>
-            {customer.opening_status && <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${statusBadge(customer.opening_status)}`}>{customer.opening_status}</span>}
+      {/* 헤더 (hero) */}
+      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 mb-4 p-5">
+        <div className="flex items-start gap-4">
+          <button onClick={() => navigate('/customers')} className="w-9 h-9 grid place-items-center rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-50 transition shrink-0"><ArrowLeft size={18} /></button>
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2.5 flex-wrap">
+              <h2 className="text-2xl font-bold text-gray-800 truncate">{customer.customer_name}</h2>
+              {customer.opening_status && <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold ${statusBadge(customer.opening_status)}`}>{customer.opening_status}</span>}
+              {form.management_type && <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-gray-100 text-gray-600">{form.management_type}</span>}
+            </div>
+            <div className="flex flex-wrap items-center gap-2 mt-2.5">
+              {([['관리코드', form.management_code], ['고객번호', form.customer_number], ['사업자', form.business_number], ['담당', form.manager], ['친밀도', form.intimacy]] as [string, string][]).filter(([, v]) => v).map(([k, v]) => (
+                <span key={k} className="inline-flex items-center gap-1.5 text-xs bg-gray-50 rounded-lg px-2.5 py-1">
+                  <span className="text-gray-400 font-semibold text-[11px]">{k}</span>
+                  <span className="text-gray-800 font-bold tabular-nums">{v}</span>
+                </span>
+              ))}
+            </div>
           </div>
-        </div>
-        <div className="flex gap-2 shrink-0">
-          <button onClick={() => setActiveSection('info')} className={`px-3 py-1.5 rounded-lg text-sm font-medium transition ${activeSection === 'info' ? 'bg-emerald-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>정보</button>
-          <button onClick={() => setActiveSection('memo')} className={`px-3 py-1.5 rounded-lg text-sm font-medium transition ${activeSection === 'memo' ? 'bg-emerald-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>메모 ({memos.length})</button>
+          <div className="flex gap-2 shrink-0">
+            <button onClick={() => setActiveSection('info')} className={`px-3 py-1.5 rounded-lg text-sm font-medium transition ${activeSection === 'info' ? 'bg-emerald-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>정보</button>
+            <button onClick={() => setActiveSection('memo')} className={`px-3 py-1.5 rounded-lg text-sm font-medium transition ${activeSection === 'memo' ? 'bg-emerald-600 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>메모 ({memos.length})</button>
+          </div>
         </div>
       </div>
 
