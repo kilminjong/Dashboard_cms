@@ -4,25 +4,32 @@ import { supabase } from '../lib/supabase'
 import { fetchCustomers, updateCustomer, fetchMemos, appendMemo, deleteMemo } from '../lib/googleSheets'
 import { useAuth } from '../hooks/useAuth'
 import type { Customer, CustomerMemo, CustomerHistory } from '../types'
-import { ArrowLeft, Save, Plus, Sparkles, RefreshCw, Clock, Trash2, Edit2, Upload, Image } from 'lucide-react'
+import { ArrowLeft, Save, Plus, Sparkles, RefreshCw, Clock, Trash2, Edit2, Upload, Image, Star, LayoutGrid, Flag, Server, Users } from 'lucide-react'
 
-const FIELD_GROUPS: Record<string, { key: string; label: string; type?: string; options?: string[] }[]> = {
-  '기본정보': [
-    { key: 'customer_name', label: '고객명' },
-    { key: 'business_number', label: '사업자번호' },
-    { key: 'customer_number', label: '고객번호' },
+type FieldDef = { key: string; label: string; type?: string; options?: string[]; required?: boolean }
+
+// 그룹 구성: 가독성을 위해 필수/기본·분류/계약·상태/ERP·서버/담당자로 분리
+// (모든 필드 키는 그대로 유지 — 저장/이력/폼 초기화 로직에 영향 없음)
+const FIELD_GROUPS: Record<string, FieldDef[]> = {
+  '필수정보': [
+    { key: 'customer_name', label: '고객명', required: true },
+    { key: 'business_number', label: '사업자번호', required: true },
+    { key: 'customer_number', label: '고객번호', required: true },
+    { key: 'manager', label: '담당자', required: true },
+    { key: 'reception_date', label: '신규접수일', type: 'date', required: true },
+    { key: 'opening_status', label: '개설상태', type: 'segment', options: ['개설대기', '개설진행', '개설취소', '개설완료', '이행완료'], required: true },
+  ],
+  '기본·분류': [
     { key: 'build_type', label: '구축구분', type: 'select', options: ['신규', '해지후재구축', '이행'] },
     { key: 'management_type', label: '관리구분', type: 'select', options: ['정상', '해지', '취소'] },
     { key: 'construction_type', label: '구축형', type: 'select', options: ['기본형', '연계형'] },
-    { key: 'manager', label: '담당자' },
     { key: 'address', label: '주소' },
-    { key: 'sensitive_customer', label: '민감고객', type: 'select', options: ['Y', 'N'] },
     { key: 'intimacy', label: '친밀도', type: 'select', options: ['상', '중', '하'] },
-    // 계약현황 통합
-    { key: 'reception_date', label: '신규접수일', type: 'date' },
-    { key: 'opening_status', label: '개설상태', type: 'select', options: ['개설대기', '개설진행', '개설취소', '개설완료', '이행완료'] },
+    { key: 'sensitive_customer', label: '민감고객', type: 'select', options: ['Y', 'N'] },
+  ],
+  '계약·상태': [
     { key: 'opening_date', label: '개설/이행일', type: 'date' },
-    { key: 'connection_status', label: '연계상태', type: 'select', options: ['ERP연계대기', 'ERP연계진행', 'ERP연계완료', 'ERP청구완료', '연계청구보류'] },
+    { key: 'connection_status', label: '연계상태', type: 'segment', options: ['ERP연계대기', 'ERP연계진행', 'ERP연계완료', 'ERP청구완료', '연계청구보류'] },
     { key: 'connection_date', label: '연계일자', type: 'date' },
     { key: 'termination_date', label: '해지일자', type: 'date' },
   ],
@@ -30,7 +37,7 @@ const FIELD_GROUPS: Record<string, { key: string; label: string; type?: string; 
     { key: 'erp_company', label: 'ERP회사' },
     { key: 'erp_type', label: 'ERP 종류', type: 'select', options: ['영림원', 'Amaranth10', 'ERP10', '옴니이솔', 'IU', 'ICUBE', 'SAP', '오직', '디모데'] },
     { key: 'erp_db', label: 'ERP DB' },
-    { key: 'connection_method', label: '연계방식', type: 'select', options: ['DB to DB', 'API', '3 Tire', 'RFC'] },
+    { key: 'connection_method', label: '연계방식', type: 'select', options: ['DB to DB', 'API', '3 Tier', 'RFC'] },
     { key: 'server_location', label: '서버PC 상세위치', type: 'select-other', options: ['내부', '전산실'] },
     { key: 'schedule_use', label: '스케줄사용여부', type: 'select', options: ['Y', 'N'] },
     { key: 'customer_ip', label: '고객사 IP' },
@@ -55,6 +62,16 @@ const FIELD_GROUPS: Record<string, { key: string; label: string; type?: string; 
     { key: 'contact_email3', label: '담당자3 이메일', type: 'email' },
   ],
 }
+
+// 수정 폼 섹션 메타 (담당자 제외) — 좌측 네비/카드 헤더에 사용
+const SECTION_META: Record<string, { id: string; title: string; desc: string; Icon: any; iconCls: string; cardBorder?: string }> = {
+  '필수정보': { id: 'sec-req', title: '필수 정보', desc: '저장에 꼭 필요한 항목', Icon: Star, iconCls: 'bg-rose-50 text-rose-500', cardBorder: 'border-emerald-200' },
+  '기본·분류': { id: 'sec-basic', title: '기본 · 분류', desc: '선택 입력', Icon: LayoutGrid, iconCls: 'bg-emerald-50 text-emerald-600' },
+  '계약·상태': { id: 'sec-ctr', title: '계약 · 상태', desc: '진행 단계 및 일자', Icon: Flag, iconCls: 'bg-blue-50 text-blue-600' },
+  'ERP정보': { id: 'sec-erp', title: 'ERP · 서버', desc: '시스템 환경 정보', Icon: Server, iconCls: 'bg-violet-50 text-violet-600' },
+}
+const SECTION_ORDER = ['필수정보', '기본·분류', '계약·상태', 'ERP정보']
+const PERSON_GROUPS = ['담당자1', '담당자2', '담당자3']
 
 const FIELD_LABELS: Record<string, string> = {}
 Object.values(FIELD_GROUPS).forEach((fields) => {
@@ -91,10 +108,24 @@ export default function CustomerDetail() {
 
   const [activeSection, setActiveSection] = useState<'info' | 'memo'>('info')
   const [cardUploading, setCardUploading] = useState(false)
+  const [activePerson, setActivePerson] = useState(0) // 담당자 탭 0~2
+  const [activeSec, setActiveSec] = useState('sec-req') // 좌측 네비 현재 위치
 
   useEffect(() => {
     if (id) { loadCustomer(); loadMemos(); loadHistory() }
   }, [id])
+
+  // 수정 모드: 스크롤 위치에 따라 좌측 네비 활성 섹션 표시
+  useEffect(() => {
+    if (!editing) return
+    const ids = [...SECTION_ORDER.map((g) => SECTION_META[g].id), 'sec-ppl']
+    const io = new IntersectionObserver(
+      (entries) => entries.forEach((e) => { if (e.isIntersecting) setActiveSec((e.target as HTMLElement).id) }),
+      { rootMargin: '-100px 0px -65% 0px' }
+    )
+    ids.forEach((sid) => { const el = document.getElementById(sid); if (el) io.observe(el) })
+    return () => io.disconnect()
+  }, [editing])
 
   const loadCustomer = async () => {
     try {
@@ -359,6 +390,17 @@ export default function CustomerDetail() {
 
   // 필드 렌더링
   const renderField = (field: any) => {
+    if (field.type === 'segment' && field.options) {
+      return <div className="flex flex-wrap gap-1.5">
+        {field.options.map((o: string) => {
+          const active = form[field.key] === o
+          return <button key={o} type="button" onClick={() => setForm({ ...form, [field.key]: active ? '' : o })}
+            className={`h-9 px-3 rounded-lg text-xs font-semibold border inline-flex items-center gap-1.5 transition ${active ? 'bg-emerald-600 border-emerald-600 text-white shadow-sm' : 'bg-white border-gray-300 text-gray-500 hover:border-emerald-400'}`}>
+            <span className={`w-1.5 h-1.5 rounded-full ${active ? 'bg-white' : 'bg-gray-300'}`} />{o}
+          </button>
+        })}
+      </div>
+    }
     if (field.type === 'select' && field.options) {
       return <select value={form[field.key] || ''} onChange={(e) => setForm({ ...form, [field.key]: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white focus:ring-2 focus:ring-emerald-500 outline-none"><option value="">선택</option>{field.options.map((o: string) => <option key={o} value={o}>{o}</option>)}</select>
     }
@@ -441,32 +483,94 @@ export default function CustomerDetail() {
             </button>
           )}
 
-          {/* 인라인 수정 폼 */}
-          {editing && (
-            <div className="bg-white rounded-xl shadow-sm border border-emerald-200 p-5 mb-6">
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="font-bold text-gray-800">정보 수정</h3>
-                <div className="flex gap-2">
-                  <button onClick={() => { setEditing(false); setForm({ ...originalForm }) }} className="px-3 py-1.5 border border-gray-300 text-gray-600 rounded-lg hover:bg-gray-50 text-sm">취소</button>
-                  <button onClick={handleSave} disabled={saving} className="flex items-center gap-1.5 px-4 py-1.5 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 text-sm"><Save size={14} />{saving ? '저장 중...' : '저장'}</button>
+          {/* 인라인 수정 폼 (섹션 분리 + 좌측 네비) */}
+          {editing && (() => {
+            const allFields = Object.values(FIELD_GROUPS).flat()
+            const changedCount = Object.keys(form).filter((k) => (form[k] || '') !== (originalForm[k] || '')).length
+            const filledPct = Math.round((allFields.filter((f) => String(form[f.key] || '').trim()).length / allFields.length) * 100)
+            const navItems = [...SECTION_ORDER.map((g) => ({ id: SECTION_META[g].id, title: SECTION_META[g].title, cnt: FIELD_GROUPS[g].length })), { id: 'sec-ppl', title: '담당자', cnt: 3 }]
+            return (
+              <div className="grid grid-cols-1 lg:grid-cols-[176px_1fr] gap-5 items-start mb-6">
+                {/* 좌측 섹션 네비 */}
+                <nav className="hidden lg:block sticky top-4">
+                  <p className="text-[11px] font-bold tracking-wider text-gray-400 uppercase px-3 pb-2">입력 항목</p>
+                  {navItems.map((s) => (
+                    <button key={s.id} onClick={() => { document.getElementById(s.id)?.scrollIntoView({ behavior: 'smooth', block: 'start' }); setActiveSec(s.id) }}
+                      className={`w-full flex items-center justify-between gap-2 px-3 py-2 rounded-lg text-sm font-semibold transition border-l-2 ${activeSec === s.id ? 'bg-emerald-50 text-emerald-700 border-emerald-500' : 'text-gray-500 border-transparent hover:bg-gray-50'}`}>
+                      <span>{s.title}</span>
+                      <span className={`text-[11px] font-bold rounded px-1.5 py-0.5 ${activeSec === s.id ? 'bg-white text-emerald-700' : 'bg-gray-100 text-gray-400'}`}>{s.cnt}</span>
+                    </button>
+                  ))}
+                  <div className="mt-3 mx-3 p-3 bg-white border border-gray-100 rounded-lg text-[11px] text-gray-400 leading-relaxed">
+                    입력 완성도 <b className="text-emerald-600">{filledPct}%</b><br />고객번호 앞자리 0은 그대로 저장됩니다.
+                  </div>
+                </nav>
+
+                {/* 메인 폼 */}
+                <div className="min-w-0 space-y-4">
+                  {/* 액션 바 (sticky) */}
+                  <div className="sticky top-2 z-20 flex items-center gap-3 bg-white/90 backdrop-blur border border-gray-200 rounded-xl px-4 py-2.5 shadow-sm">
+                    <h3 className="font-bold text-gray-800 text-sm">정보 수정</h3>
+                    {changedCount > 0 && <span className="text-xs text-amber-600 font-medium">변경 {changedCount}건 · 미저장</span>}
+                    <div className="flex-1" />
+                    <button onClick={() => { setEditing(false); setForm({ ...originalForm }) }} className="px-3 py-1.5 border border-gray-300 text-gray-600 rounded-lg hover:bg-gray-50 text-sm">취소</button>
+                    <button onClick={handleSave} disabled={saving} className="flex items-center gap-1.5 px-4 py-1.5 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 text-sm disabled:opacity-50"><Save size={14} />{saving ? '저장 중...' : '저장'}</button>
+                  </div>
+
+                  {/* 섹션 카드들 */}
+                  {SECTION_ORDER.map((group) => {
+                    const meta = SECTION_META[group]
+                    const Icon = meta.Icon
+                    return (
+                      <section key={group} id={meta.id} className={`scroll-mt-20 bg-white rounded-xl shadow-sm border ${meta.cardBorder || 'border-gray-100'} overflow-hidden`}>
+                        <div className="flex items-center gap-2.5 px-5 py-3 border-b border-gray-100">
+                          <span className={`w-7 h-7 rounded-lg grid place-items-center ${meta.iconCls}`}><Icon size={15} /></span>
+                          <h4 className="font-bold text-gray-800 text-sm">{meta.title}</h4>
+                          <span className="text-xs text-gray-400 ml-auto">{meta.desc}</span>
+                        </div>
+                        <div className="p-5 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-4 gap-y-3.5">
+                          {FIELD_GROUPS[group].map((field) => (
+                            <div key={field.key} className={field.type === 'segment' ? 'sm:col-span-2 lg:col-span-3' : ''}>
+                              <label className="block text-xs font-medium text-gray-500 mb-1">{field.label}{field.required && <span className="text-rose-500 font-bold ml-0.5">*</span>}</label>
+                              {renderField(field)}
+                            </div>
+                          ))}
+                        </div>
+                      </section>
+                    )
+                  })}
+
+                  {/* 담당자 카드 (탭) */}
+                  <section id="sec-ppl" className="scroll-mt-20 bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+                    <div className="flex items-center gap-2.5 px-5 py-3 border-b border-gray-100">
+                      <span className="w-7 h-7 rounded-lg grid place-items-center bg-amber-50 text-amber-600"><Users size={15} /></span>
+                      <h4 className="font-bold text-gray-800 text-sm">담당자</h4>
+                      <span className="text-xs text-gray-400 ml-auto">최대 3명 · 탭 전환</span>
+                    </div>
+                    <div className="flex gap-1.5 px-5 pt-3">
+                      {PERSON_GROUPS.map((pg, i) => {
+                        const filled = !!form[FIELD_GROUPS[pg][0].key]
+                        return (
+                          <button key={pg} type="button" onClick={() => setActivePerson(i)}
+                            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-t-lg text-xs font-bold border border-b-0 transition ${activePerson === i ? 'bg-white text-gray-800 border-gray-200 -mb-px' : 'bg-gray-50 text-gray-400 border-transparent'}`}>
+                            <span className={`w-1.5 h-1.5 rounded-full ${filled ? 'bg-emerald-500' : 'bg-gray-300'}`} />담당자 {i + 1}
+                          </button>
+                        )
+                      })}
+                    </div>
+                    <div className="p-5 border-t border-gray-100 grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-3.5">
+                      {FIELD_GROUPS[PERSON_GROUPS[activePerson]].map((field) => (
+                        <div key={field.key}>
+                          <label className="block text-xs font-medium text-gray-500 mb-1">{field.label.replace(/^담당자\d\s*/, '')}</label>
+                          {renderField(field)}
+                        </div>
+                      ))}
+                    </div>
+                  </section>
                 </div>
               </div>
-
-              {Object.entries(FIELD_GROUPS).map(([group, fields]) => (
-                <div key={group} className="mb-5">
-                  <p className="text-xs font-semibold text-gray-500 uppercase mb-2">{group}</p>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                    {fields.map((field) => (
-                      <div key={field.key}>
-                        <label className="block text-xs font-medium text-gray-500 mb-1">{field.label}</label>
-                        {renderField(field)}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
+            )
+          })()}
         </>
       )}
 
