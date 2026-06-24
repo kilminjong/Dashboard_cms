@@ -94,6 +94,8 @@ export default function Customers() {
   const [editingCustomer, setEditingCustomer] = useState<any | null>(null)
   const [form, setForm] = useState<any>(emptyForm())
   const [modalPerson, setModalPerson] = useState(0) // 등록/수정 모달 담당자 탭
+  const [otherKeys, setOtherKeys] = useState<Set<string>>(new Set()) // 등록/수정 모달 '기타' 직접입력 필드
+  const [importOtherKeys, setImportOtherKeys] = useState<Set<string>>(new Set()) // 일괄등록 수정 '기타' 직접입력 필드
   const [loading, setLoading] = useState(true)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
@@ -312,6 +314,7 @@ export default function Customers() {
     } catch { /* 실패해도 수동 입력 가능 */ }
     setForm(f)
     setModalPerson(0)
+    setOtherKeys(new Set())
     setShowModal(true)
   }
 
@@ -321,6 +324,7 @@ export default function Customers() {
     CUSTOMER_FIELDS.forEach(({ key }) => (f[key] = (customer as any)[key] || ''))
     setForm(f)
     setModalPerson(0)
+    setOtherKeys(new Set())
     setShowModal(true)
   }
 
@@ -352,18 +356,22 @@ export default function Customers() {
       )
     }
     if (field.type === 'select-other' && field.options) {
+      const isOther = otherKeys.has(field.key) || (v !== '' && !field.options.includes(v))
       return (
-        <div className="flex gap-2">
-          <select value={field.options.includes(v) ? v : v ? '기타' : ''}
-            onChange={(e) => { if (e.target.value === '기타') setForm({ ...form, [field.key]: '' }); else setForm({ ...form, [field.key]: e.target.value }) }}
-            className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent outline-none text-sm bg-white">
+        <div className="flex flex-col gap-2">
+          <select value={isOther ? '기타' : v}
+            onChange={(e) => {
+              if (e.target.value === '기타') { setOtherKeys((p) => new Set(p).add(field.key)); setForm({ ...form, [field.key]: '' }) }
+              else { setOtherKeys((p) => { const n = new Set(p); n.delete(field.key); return n }); setForm({ ...form, [field.key]: e.target.value }) }
+            }}
+            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent outline-none text-sm bg-white">
             <option value="">선택하세요</option>
             {field.options.map((opt: string) => <option key={opt} value={opt}>{opt}</option>)}
             <option value="기타">기타(직접입력)</option>
           </select>
-          {v && !field.options.includes(v) && (
-            <input type="text" value={v} onChange={(e) => setForm({ ...form, [field.key]: e.target.value })}
-              className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent outline-none text-sm" placeholder="직접 입력" />
+          {isOther && (
+            <input type="text" value={v} autoFocus onChange={(e) => setForm({ ...form, [field.key]: e.target.value })}
+              className="w-full px-3 py-2 border border-emerald-400 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent outline-none text-sm" placeholder="직접 입력" />
           )}
         </div>
       )
@@ -1164,7 +1172,7 @@ export default function Customers() {
                 return (
                   <div key={i}
                     className="border border-gray-200 rounded-xl p-4 hover:border-emerald-300 hover:bg-emerald-50/30 cursor-pointer transition"
-                    onClick={() => { setEditingImportIdx(i); setEditingImportForm({ ...row }) }}
+                    onClick={() => { setEditingImportIdx(i); setEditingImportForm({ ...row }); setImportOtherKeys(new Set()) }}
                   >
                     <div className="flex items-start justify-between gap-3">
                       <div className="flex-1 min-w-0">
@@ -1202,7 +1210,7 @@ export default function Customers() {
                       {/* 우측: 수정/삭제 + 입력률 */}
                       <div className="flex flex-col items-end gap-2 shrink-0">
                         <div className="flex items-center gap-1.5">
-                          <button className="p-1.5 text-gray-300 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition" onClick={(e) => { e.stopPropagation(); setEditingImportIdx(i); setEditingImportForm({ ...row }) }}>
+                          <button className="p-1.5 text-gray-300 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition" onClick={(e) => { e.stopPropagation(); setEditingImportIdx(i); setEditingImportForm({ ...row }); setImportOtherKeys(new Set()) }}>
                             <Edit2 size={14} />
                           </button>
                           <button className="p-1.5 text-gray-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition" onClick={(e) => {
@@ -1271,26 +1279,30 @@ export default function Customers() {
                       <option value="">선택</option>
                       {field.options.map((opt) => <option key={opt} value={opt}>{opt}</option>)}
                     </select>
-                  ) : field.type === 'select-other' && field.options ? (
-                    <div className="flex gap-1.5">
-                      <select
-                        value={field.options.includes(editingImportForm[field.key]) ? editingImportForm[field.key] : editingImportForm[field.key] ? '기타' : ''}
-                        onChange={(e) => {
-                          if (e.target.value === '기타') setEditingImportForm({ ...editingImportForm, [field.key]: '' })
-                          else setEditingImportForm({ ...editingImportForm, [field.key]: e.target.value })
-                        }}
-                        className="px-2.5 py-1.5 border border-gray-300 rounded-lg text-sm bg-white focus:ring-2 focus:ring-emerald-500 outline-none"
-                      >
-                        <option value="">선택</option>
-                        {field.options.map((opt) => <option key={opt} value={opt}>{opt}</option>)}
-                        <option value="기타">기타</option>
-                      </select>
-                      {editingImportForm[field.key] && !field.options.includes(editingImportForm[field.key]) && (
-                        <input type="text" value={editingImportForm[field.key]} onChange={(e) => setEditingImportForm({ ...editingImportForm, [field.key]: e.target.value })}
-                          className="flex-1 px-2.5 py-1.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 outline-none" placeholder="직접 입력" />
-                      )}
-                    </div>
-                  ) : (
+                  ) : field.type === 'select-other' && field.options ? (() => {
+                    const iv = editingImportForm[field.key] || ''
+                    const isOther = importOtherKeys.has(field.key) || (iv !== '' && !field.options.includes(iv))
+                    return (
+                      <div className="flex flex-col gap-1.5">
+                        <select
+                          value={isOther ? '기타' : iv}
+                          onChange={(e) => {
+                            if (e.target.value === '기타') { setImportOtherKeys((p) => new Set(p).add(field.key)); setEditingImportForm({ ...editingImportForm, [field.key]: '' }) }
+                            else { setImportOtherKeys((p) => { const n = new Set(p); n.delete(field.key); return n }); setEditingImportForm({ ...editingImportForm, [field.key]: e.target.value }) }
+                          }}
+                          className="w-full px-2.5 py-1.5 border border-gray-300 rounded-lg text-sm bg-white focus:ring-2 focus:ring-emerald-500 outline-none"
+                        >
+                          <option value="">선택</option>
+                          {field.options.map((opt) => <option key={opt} value={opt}>{opt}</option>)}
+                          <option value="기타">기타(직접입력)</option>
+                        </select>
+                        {isOther && (
+                          <input type="text" value={iv} autoFocus onChange={(e) => setEditingImportForm({ ...editingImportForm, [field.key]: e.target.value })}
+                            className="w-full px-2.5 py-1.5 border border-emerald-400 rounded-lg text-sm focus:ring-2 focus:ring-emerald-500 outline-none" placeholder="직접 입력" />
+                        )}
+                      </div>
+                    )
+                  })() : (
                     <input
                       type={field.type || 'text'}
                       value={editingImportForm[field.key] || ''}
