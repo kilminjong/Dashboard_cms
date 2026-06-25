@@ -16,6 +16,7 @@ import Reports from './pages/Reports'
 import KpiSettings from './pages/KpiSettings'
 import CustomerSearch from './pages/CustomerSearch'
 import Todo from './pages/Todo'
+import Renewals from './pages/Renewals'
 import ProfilePage from './pages/Profile'
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
@@ -70,6 +71,7 @@ export default function App() {
           <Route path="/customers/:id" element={<CustomerDetail />} />
           <Route path="/customers/detail-search" element={<CustomerSearch />} />
           <Route path="/todo" element={<Todo />} />
+          <Route path="/renewals" element={<Renewals />} />
           <Route path="/marketing" element={<Marketing />} />
           <Route path="/reports/:tab" element={<Reports />} />
           <Route path="/reports" element={<Reports />} />
