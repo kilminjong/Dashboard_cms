@@ -13,6 +13,7 @@ import {
   FileBarChart,
   ChevronDown,
   TrendingUp,
+  ClipboardList,
 } from 'lucide-react'
 import { useState } from 'react'
 import { useNotification } from '../../hooks/useNotification'
@@ -26,6 +27,11 @@ const navItems = [
     label: '고객정보관리', icon: Users, children: [
       { to: '/customers', label: '고객 원장 정보' },
       { to: '/customers/detail-search', label: '고객 상세 정보' },
+    ],
+  },
+  {
+    label: '업무 관리', icon: ClipboardList, children: [
+      { to: '/todo', label: '할 일 · 후속조치' },
     ],
   },
   {
@@ -53,7 +59,7 @@ export default function Layout() {
   const { profile } = useAuth()
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [expandedMenu, setExpandedMenu] = useState<string | null>(
-    location.pathname.startsWith('/customers') ? '고객정보관리' : (location.pathname.startsWith('/reports') || location.pathname.startsWith('/kpi-settings')) ? '보고서' : null
+    location.pathname.startsWith('/customers') ? '고객정보관리' : location.pathname.startsWith('/todo') ? '업무 관리' : (location.pathname.startsWith('/reports') || location.pathname.startsWith('/kpi-settings')) ? '보고서' : null
   )
   useNotification()
   useAutoBackup()
