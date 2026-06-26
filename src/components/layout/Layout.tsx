@@ -33,6 +33,7 @@ const navItems = [
     label: '업무 관리', icon: ClipboardList, children: [
       { to: '/todo', label: '할 일 · 후속조치' },
       { to: '/renewals', label: '갱신 · 만료 관리' },
+      { to: '/connections', label: '연계 현황 보드' },
     ],
   },
   {
@@ -60,7 +61,7 @@ export default function Layout() {
   const { profile } = useAuth()
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [expandedMenu, setExpandedMenu] = useState<string | null>(
-    location.pathname.startsWith('/customers') ? '고객정보관리' : (location.pathname.startsWith('/todo') || location.pathname.startsWith('/renewals')) ? '업무 관리' : (location.pathname.startsWith('/reports') || location.pathname.startsWith('/kpi-settings')) ? '보고서' : null
+    location.pathname.startsWith('/customers') ? '고객정보관리' : (location.pathname.startsWith('/todo') || location.pathname.startsWith('/renewals') || location.pathname.startsWith('/connections')) ? '업무 관리' : (location.pathname.startsWith('/reports') || location.pathname.startsWith('/kpi-settings')) ? '보고서' : null
   )
   useNotification()
   useAutoBackup()
