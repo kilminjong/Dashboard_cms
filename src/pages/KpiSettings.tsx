@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
-import { Target, Plus, Edit2, Trash2, Save, X, Calendar, TrendingUp } from 'lucide-react'
+import { Target, Plus, Edit2, Trash2, Save, X, Calendar, TrendingUp, BarChart3, Copy } from 'lucide-react'
 
 interface KpiItem {
   id: string
@@ -145,20 +146,46 @@ export default function KpiSettings() {
     <div>
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-5">
         <div>
-          <h2 className="text-2xl font-bold text-gray-800">KPI 목표 관리</h2>
-          <p className="text-sm text-gray-400 mt-0.5">연도별 목표 지표를 관리합니다. 보고서에 자동 반영됩니다.</p>
+          <h2 className="text-2xl font-bold text-gray-800">KPI 목표 설정</h2>
+          <p className="text-sm text-gray-400 mt-0.5">연도별 목표값을 등록·수정합니다. 달성 현황은 ‘KPI 현황’에서 자동 집계됩니다.</p>
         </div>
         <div className="flex gap-2">
           <select value={selectedYear} onChange={(e) => setSelectedYear(parseInt(e.target.value))}
             className="px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white focus:ring-2 focus:ring-emerald-500 outline-none">
             {availableYears.map((y) => <option key={y} value={y}>{y}년</option>)}
           </select>
+          <Link to="/kpi" className="flex items-center gap-1.5 px-4 py-2 border border-gray-200 bg-white text-gray-700 rounded-lg hover:bg-gray-50 transition text-sm">
+            <BarChart3 size={15} /> 현황 보기
+          </Link>
           <button onClick={() => openForm()}
             className="flex items-center gap-1.5 px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition text-sm">
             <Plus size={15} /> KPI 추가
           </button>
         </div>
       </div>
+
+      {/* 안내 */}
+      {kpis.length > 0 && (
+        <div className="bg-emerald-50/60 border border-emerald-100 rounded-xl p-3 mb-5 flex items-start gap-2">
+          <Target size={15} className="text-emerald-600 mt-0.5 shrink-0" />
+          <p className="text-xs text-emerald-800 leading-relaxed">
+            지표명에 <b>신규·해지·완료·전환·미개설·유지·순증</b> 등의 키워드가 포함되면 고객 데이터에서 현재값이 자동 계산됩니다.
+            전년도 목표를 재사용하려면 빈 연도를 선택한 뒤 ‘이전 연도 복사’를 이용하세요.
+          </p>
+        </div>
+      )}
+
+      {/* 전년도 복사 (항목이 있어도 노출) */}
+      {kpis.length > 0 && availableYears.filter((y) => y !== selectedYear).length > 0 && (
+        <div className="flex items-center gap-2 mb-4 flex-wrap">
+          <span className="text-xs text-gray-400">이전 연도 복사:</span>
+          {availableYears.filter((y) => y !== selectedYear).slice(0, 3).map((y) => (
+            <button key={y} onClick={() => copyFromYear(y)} className="flex items-center gap-1 px-2.5 py-1 border border-gray-200 bg-white text-gray-600 rounded-lg text-xs hover:bg-gray-50">
+              <Copy size={11} /> {y}년 → {selectedYear}년
+            </button>
+          ))}
+        </div>
+      )}
 
       {/* 전년도 복사 */}
       {kpis.length === 0 && availableYears.filter((y) => y !== selectedYear).length > 0 && (
