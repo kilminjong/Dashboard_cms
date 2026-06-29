@@ -12,7 +12,8 @@ import AiAssistant from './pages/AiAssistant'
 import CalendarPage from './pages/Calendar'
 import Marketing from './pages/Marketing'
 import Documents from './pages/Documents'
-import Reports from './pages/Reports'
+import ReportBuilder from './pages/ReportBuilder'
+import KpiDashboard from './pages/KpiDashboard'
 import KpiSettings from './pages/KpiSettings'
 import CustomerSearch from './pages/CustomerSearch'
 import Todo from './pages/Todo'
@@ -75,8 +76,10 @@ export default function App() {
           <Route path="/renewals" element={<Renewals />} />
           <Route path="/connections" element={<ConnectionBoard />} />
           <Route path="/marketing" element={<Marketing />} />
-          <Route path="/reports/:tab" element={<Reports />} />
-          <Route path="/reports" element={<Reports />} />
+          <Route path="/reports/builder" element={<ReportBuilder />} />
+          <Route path="/reports" element={<Navigate to="/reports/builder" replace />} />
+          <Route path="/reports/:tab" element={<Navigate to="/reports/builder" replace />} />
+          <Route path="/kpi" element={<KpiDashboard />} />
           <Route path="/kpi-settings" element={<KpiSettings />} />
           <Route path="/ai-assistant" element={<AiAssistant />} />
           <Route path="/calendar" element={<CalendarPage />} />
