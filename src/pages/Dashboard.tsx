@@ -355,7 +355,7 @@ export default function Dashboard() {
   const quickActions: { label: string; desc: string; Icon: any; to: string; tint: string }[] = [
     { label: '고객 등록', desc: '새로운 고객 등록', Icon: UserPlus, to: '/customers', tint: 'blue' },
     { label: '일정 등록', desc: '새로운 일정 등록', Icon: CalendarPlus, to: '/calendar', tint: 'green' },
-    { label: '보고서 조회', desc: '보고서 확인', Icon: FileBarChart, to: '/reports/periodic', tint: 'sky' },
+    { label: '보고서 조회', desc: '보고서 확인', Icon: FileBarChart, to: '/reports/builder', tint: 'sky' },
     { label: '마케팅 캠페인', desc: '마케팅 캠페인 관리', Icon: Megaphone, to: '/marketing', tint: 'violet' },
     { label: 'AI 어시스턴트', desc: 'AI 도움 받기', Icon: Bot, to: '/ai-assistant', tint: 'indigo' },
     { label: '공유 문서함', desc: '문서 공유 관리', Icon: FolderOpen, to: '/documents', tint: 'green' },
