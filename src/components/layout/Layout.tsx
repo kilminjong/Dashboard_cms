@@ -14,6 +14,7 @@ import {
   ChevronDown,
   TrendingUp,
   ClipboardList,
+  PanelLeft,
 } from 'lucide-react'
 import { useState } from 'react'
 import { useNotification } from '../../hooks/useNotification'
@@ -38,14 +39,10 @@ const navItems = [
   },
   {
     label: '보고서', icon: FileBarChart, children: [
-      { section: '시계열' },
-      { to: '/reports/periodic', label: '업무 보고서' },
-      { to: '/reports/unopened', label: '미개설 관리' },
-      { section: '사업 특화' },
-      { to: '/reports/manager', label: '담당자 실적' },
-      { to: '/reports/marketing', label: '마케팅 보고서' },
-      { section: '설정' },
-      { to: '/kpi-settings', label: 'KPI 목표 관리' },
+      { to: '/reports/builder', label: '커스텀 보고서' },
+      { section: 'KPI' },
+      { to: '/kpi', label: 'KPI 현황' },
+      { to: '/kpi-settings', label: 'KPI 목표 설정' },
     ],
   },
   { to: '/marketing', icon: TrendingUp, label: '마케팅' },
@@ -60,8 +57,10 @@ export default function Layout() {
   const location = useLocation()
   const { profile } = useAuth()
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [collapsed, setCollapsed] = useState(() => localStorage.getItem('sidebarCollapsed') === '1')
+  const toggleCollapsed = () => setCollapsed((v) => { const n = !v; localStorage.setItem('sidebarCollapsed', n ? '1' : '0'); return n })
   const [expandedMenu, setExpandedMenu] = useState<string | null>(
-    location.pathname.startsWith('/customers') ? '고객정보관리' : (location.pathname.startsWith('/todo') || location.pathname.startsWith('/renewals') || location.pathname.startsWith('/connections')) ? '업무 관리' : (location.pathname.startsWith('/reports') || location.pathname.startsWith('/kpi-settings')) ? '보고서' : null
+    location.pathname.startsWith('/customers') ? '고객정보관리' : (location.pathname.startsWith('/todo') || location.pathname.startsWith('/renewals') || location.pathname.startsWith('/connections')) ? '업무 관리' : (location.pathname.startsWith('/reports') || location.pathname.startsWith('/kpi')) ? '보고서' : null
   )
   useNotification()
   useAutoBackup()
@@ -91,7 +90,7 @@ export default function Layout() {
       <aside
         className={`fixed lg:static inset-y-0 left-0 z-50 w-64 bg-gradient-to-b from-slate-800 to-slate-900 transform transition-transform duration-200 ease-in-out flex flex-col h-full ${
           sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
-        }`}
+        } ${collapsed ? 'lg:hidden' : ''}`}
       >
         {/* 로고 */}
         <div className="flex items-center justify-between h-16 px-5 shrink-0">
@@ -223,6 +222,13 @@ export default function Layout() {
             onClick={() => setSidebarOpen(true)}
           >
             <Menu size={20} />
+          </button>
+          <button
+            className="hidden lg:inline-flex p-2 text-gray-500 hover:bg-gray-100 rounded-lg mr-3"
+            onClick={toggleCollapsed}
+            title={collapsed ? '메뉴 열기' : '메뉴 닫기'}
+          >
+            <PanelLeft size={20} />
           </button>
           <div className="text-sm text-gray-500">webcash 하나CMS팀 관리 시스템</div>
         </header>
