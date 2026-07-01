@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { loadAllVoc, vocTone, VOC_TYPES, type BranchQVoc } from '../lib/branchq'
-import { MessageSquareText, RefreshCw, Search, FileDown, Download, ChevronRight } from 'lucide-react'
+import { loadAllVoc, deleteVoc, vocTone, VOC_TYPES, type BranchQVoc } from '../lib/branchq'
+import { MessageSquareText, RefreshCw, Search, FileDown, Download, ChevronRight, Trash2, AlertTriangle } from 'lucide-react'
 import * as XLSX from 'xlsx-js-style'
 import html2canvas from 'html2canvas-pro'
 import jsPDF from 'jspdf'
@@ -16,9 +16,22 @@ export default function BranchQVoc() {
   const [typeFilter, setTypeFilter] = useState('전체')
   const [search, setSearch] = useState('')
   const [exporting, setExporting] = useState(false)
+  const [deleteTarget, setDeleteTarget] = useState<BranchQVoc | null>(null)
+  const [deleting, setDeleting] = useState(false)
   const tableRef = useRef<HTMLDivElement>(null)
 
-  useEffect(() => { (async () => { setVoc(await loadAllVoc()); setLoading(false) })() }, [])
+  const reload = async () => setVoc(await loadAllVoc())
+  useEffect(() => { (async () => { await reload(); setLoading(false) })() }, [])
+
+  const confirmDelete = async () => {
+    if (!deleteTarget) return
+    setDeleting(true)
+    try {
+      await deleteVoc(deleteTarget.id)
+      await reload()
+      setDeleteTarget(null)
+    } finally { setDeleting(false) }
+  }
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase()
@@ -133,7 +146,7 @@ export default function BranchQVoc() {
                 <th className="text-center px-3 py-3 text-xs font-bold w-20">유형</th>
                 <th className="text-left px-4 py-3 text-xs font-bold">VOC 내용</th>
                 <th className="text-center px-3 py-3 text-xs font-bold w-24">작성자</th>
-                <th className="px-2 py-3 w-8"></th>
+                <th className="px-2 py-3 w-16"></th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-50">
@@ -147,7 +160,12 @@ export default function BranchQVoc() {
                   <td className="text-center px-3 py-3"><span className={`inline-block px-2 py-0.5 rounded-full text-xs font-bold ${vocTone(v.voc_type)}`}>{v.voc_type}</span></td>
                   <td className="px-4 py-3 text-gray-700 whitespace-pre-wrap leading-relaxed">{v.content}</td>
                   <td className="px-3 py-3 text-center text-gray-500 whitespace-nowrap">{v.author || '-'}</td>
-                  <td className="px-2 py-3 text-center"><ChevronRight size={14} className="text-gray-300 group-hover:text-blue-500" /></td>
+                  <td className="px-2 py-3">
+                    <div className="flex items-center gap-1 justify-center" onClick={(e) => e.stopPropagation()}>
+                      <button onClick={() => setDeleteTarget(v)} className="p-1 text-gray-300 hover:text-red-500" title="VOC 삭제"><Trash2 size={13} /></button>
+                      <ChevronRight size={14} className="text-gray-300 group-hover:text-blue-500" />
+                    </div>
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -155,6 +173,29 @@ export default function BranchQVoc() {
         </div>
       </div>
       <p className="text-xs text-gray-400 mt-3">* 고객명을 클릭하면 해당 고객 상세 화면으로 이동합니다. VOC 입력은 고객 상세 화면에서 가능합니다.</p>
+
+      {/* VOC 삭제 확인 모달 */}
+      {deleteTarget && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => !deleting && setDeleteTarget(null)}>
+          <div className="bg-white rounded-2xl w-full max-w-md p-6" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-start gap-3 mb-4">
+              <span className="w-10 h-10 rounded-full bg-red-50 grid place-items-center shrink-0"><AlertTriangle size={20} className="text-red-500" /></span>
+              <div>
+                <h3 className="text-lg font-bold text-gray-800">VOC 삭제</h3>
+                <p className="text-sm text-gray-500 mt-1"><b className="text-gray-700">{deleteTarget.customer_name || deleteTarget.customer_number}</b> · {deleteTarget.voc_date}</p>
+              </div>
+            </div>
+            <div className="bg-red-50 border border-red-200 rounded-xl p-3 mb-5">
+              <p className="text-sm text-red-700 leading-relaxed">VOC 삭제 진행 시 <b>영구 삭제됩니다.</b> 삭제하시겠습니까?</p>
+              <p className="text-xs text-gray-500 mt-1.5 line-clamp-2">“{deleteTarget.content}”</p>
+            </div>
+            <div className="flex gap-2">
+              <button onClick={() => setDeleteTarget(null)} disabled={deleting} className="flex-1 py-2.5 border border-gray-300 text-gray-600 rounded-lg hover:bg-gray-50 text-sm disabled:opacity-50">취소</button>
+              <button onClick={confirmDelete} disabled={deleting} className="flex-1 py-2.5 bg-red-600 text-white rounded-lg hover:bg-red-700 text-sm font-semibold disabled:opacity-50">{deleting ? '삭제 중…' : '영구 삭제'}</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
