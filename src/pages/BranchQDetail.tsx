@@ -1,13 +1,13 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { fetchCustomers, updateBranchqInSheet } from '../lib/googleSheets'
-import { loadBranchqRecords, upsertBranchqRecord, statusTone, BUILD_STATUSES, DEV_MOCK_CUSTOMERS, loadVocByCustomer, addVoc, deleteVoc, vocTone, VOC_TYPES, type BranchQRecord, type BranchQVoc } from '../lib/branchq'
+import { loadBranchqRecords, upsertBranchqRecord, statusTone, BUILD_STATUSES, DEV_MOCK_CUSTOMERS, loadVocByCustomer, addVoc, deleteVoc, vocTone, VOC_TYPES, getNotes, NOTES_TEMPLATE, type BranchQRecord, type BranchQVoc } from '../lib/branchq'
 import { useAuth } from '../hooks/useAuth'
-import { ChevronLeft, Pencil, Save, X, RefreshCw, Phone, MessageSquare, AlertCircle, Info, StickyNote, CalendarDays, MessageSquareText, Plus, Trash2, CheckCircle2 } from 'lucide-react'
+import { ChevronLeft, Pencil, Save, X, RefreshCw, Phone, ClipboardList, StickyNote, CalendarDays, MessageSquareText, Plus, Trash2, CheckCircle2, Lightbulb } from 'lucide-react'
 
 const isDev = (() => { try { return import.meta.env.DEV } catch { return false } })()
 
-const emptyForm = (): BranchQRecord => ({ customer_number: '', build_status: '구축대기', build_date: '', contact_date: '', inquiry: '', special_notes: '', guidance: '', memo: '' })
+const emptyForm = (): BranchQRecord => ({ customer_number: '', build_status: '구축대기', build_date: '', contact_date: '', notes: '', memo: '' })
 
 export default function BranchQDetail() {
   const { id } = useParams<{ id: string }>()
@@ -68,9 +68,7 @@ export default function BranchQDetail() {
     build_status: rec?.build_status || master?.branchq_status || '구축대기',
     build_date: rec?.build_date || master?.branchq_date || '',
     contact_date: rec?.contact_date || '',
-    inquiry: rec?.inquiry || '',
-    special_notes: rec?.special_notes || '',
-    guidance: rec?.guidance || '',
+    notes: getNotes(rec),
     memo: rec?.memo || '',
   }), [rec, master, customerNumber])
 
@@ -83,9 +81,7 @@ export default function BranchQDetail() {
       build_status: view.build_status,
       build_date: view.build_date,
       contact_date: view.contact_date,
-      inquiry: view.inquiry,
-      special_notes: view.special_notes,
-      guidance: view.guidance,
+      notes: view.notes || NOTES_TEMPLATE,   // 비어 있으면 예시 양식을 채워 담당자가 보고 작성
       memo: view.memo,
     })
     setEditing(true)
@@ -190,27 +186,30 @@ export default function BranchQDetail() {
         </div>
       </div>
 
-      {/* VOC: 문의사항 / 특이사항 / 안내사항 */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        {([
-          { key: 'inquiry', label: '고객별 문의사항', Icon: MessageSquare, tint: 'text-blue-600', bg: 'bg-blue-50', ph: '고객이 문의한 내용을 기재하세요.' },
-          { key: 'special_notes', label: '특이사항', Icon: AlertCircle, tint: 'text-red-500', bg: 'bg-red-50', ph: '진행 중 발생한 특이사항을 기재하세요.' },
-          { key: 'guidance', label: '안내사항', Icon: Info, tint: 'text-emerald-600', bg: 'bg-emerald-50', ph: '고객에게 안내한 내용을 기재하세요.' },
-        ] as { key: keyof BranchQRecord; label: string; Icon: any; tint: string; bg: string; ph: string }[]).map(({ key, label, Icon, tint, bg, ph }) => (
-          <div key={key} className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden flex flex-col">
-            <div className="flex items-center gap-2 px-4 py-3 border-b border-gray-100">
-              <span className={`w-6 h-6 rounded-lg grid place-items-center ${bg}`}><Icon size={13} className={tint} /></span>
-              <h4 className="text-sm font-bold text-gray-800">{label}</h4>
-            </div>
-            <div className="p-4 flex-1">
-              {!editing ? (
-                <p className={`text-sm whitespace-pre-wrap leading-relaxed ${view[key as 'inquiry'] ? 'text-gray-700' : 'text-gray-300'}`}>{(view as any)[key] || '기재된 내용이 없습니다.'}</p>
-              ) : (
-                <textarea value={(form[key] as string) || ''} onChange={(e) => set(key, e.target.value)} rows={6} placeholder={ph} className="w-full h-full min-h-[140px] px-3 py-2 border border-gray-300 rounded-lg text-sm resize-none outline-none focus:ring-2 focus:ring-emerald-500" />
-              )}
-            </div>
-          </div>
-        ))}
+      {/* 고객 안내사항 및 문의사항 (통합) */}
+      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+        <div className="flex items-center gap-2 px-4 py-3 border-b border-gray-100">
+          <span className="w-6 h-6 rounded-lg grid place-items-center bg-emerald-50"><ClipboardList size={13} className="text-emerald-600" /></span>
+          <h4 className="text-sm font-bold text-gray-800">고객 안내사항 및 문의사항</h4>
+          {editing && (
+            <button onClick={() => { if (!form.notes?.trim() || confirm('현재 내용을 예시 양식으로 교체할까요?')) set('notes', NOTES_TEMPLATE) }}
+              className="ml-auto flex items-center gap-1 text-[11px] text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg px-2.5 py-1 hover:bg-emerald-100">
+              <Lightbulb size={12} /> 예시 양식 삽입
+            </button>
+          )}
+        </div>
+        <div className="p-4">
+          {!editing ? (
+            view.notes ? (
+              <p className="text-sm text-gray-700 whitespace-pre-wrap leading-relaxed">{view.notes}</p>
+            ) : (
+              <p className="text-sm text-gray-300">기재된 내용이 없습니다. ‘수정’을 누르면 예시 양식이 표시됩니다.</p>
+            )
+          ) : (
+            <textarea value={form.notes || ''} onChange={(e) => set('notes', e.target.value)} rows={16}
+              placeholder="고객 안내사항 및 문의사항을 입력하세요." className="w-full min-h-[360px] px-3 py-2.5 border border-gray-300 rounded-lg text-sm leading-relaxed resize-y outline-none focus:ring-2 focus:ring-emerald-500 font-[inherit]" />
+          )}
+        </div>
       </div>
 
       {/* VOC 기록 */}
