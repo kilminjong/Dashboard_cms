@@ -29,11 +29,44 @@ export interface BranchQRecord {
   build_status?: string     // 구축여부 (앱 관리값; 없으면 시트값 사용)
   build_date?: string       // 구축일자 (앱 관리값; 없으면 시트값 사용)
   contact_date?: string     // 최근 컨택일
-  inquiry?: string          // 고객별 문의사항
-  special_notes?: string    // 특이사항
-  guidance?: string         // 안내사항
+  notes?: string            // 고객 안내사항 및 문의사항 (통합)
+  inquiry?: string          // (구) 문의사항 — 하위호환용
+  special_notes?: string    // (구) 특이사항 — 하위호환용
+  guidance?: string         // (구) 안내사항 — 하위호환용
   memo?: string             // 메모
   updated_at?: string
+}
+
+// "고객 안내사항 및 문의사항" 예시 양식 (담당자가 보고 지우며 작성)
+export const NOTES_TEMPLATE = `[1] 업무현황 파악
+-
+
+[2] 브랜치Q 사용현황 확인
+예) - AI 버튼 클릭 시 IF_SERVER 메시지가 발생하여 확인하지 못했다고 하심
+    - 서버 Agent 확인 결과 WSS 비활성화되어 있어 서비스 재등록 및 재시작. 추후 동일 현상 발생 시 고객센터 안내
+
+[3] 브랜치Q 개선 및 보고서 기능 안내
+예) - 출금리스트를 AI로 만들 수 있다면 시간 소요가 많이 줄어들 것 같다고 하심
+    - 보고서 양식을 메일로 받은 후 개발 검토 안내
+
+[문의사항 체크]
+- 고객이 개선사항 관련 질문 시 개발팀으로 개발요청 및 확인 진행
+
+[핵심 기능 교육 안내]
+- 자연어 질문 → 보고서 자동 생성 / 현황 기준 조회 / PDF·Excel 다운로드 / 엑셀 편집기 / 보고서 수정(빌더) 기능 안내
+
+[신고하기 기능 안내]
+- 신고 프로세스 안내
+
+[VOC 작성]
+- 상담/문의 발생 시 VOC 작성 (VOC 확인 메뉴에서 전체 조회 가능)`
+
+// 통합 안내/문의 내용 조회 (신규 notes 우선, 없으면 구 3필드 병합)
+export function getNotes(rec?: Partial<BranchQRecord> | null): string {
+  if (!rec) return ''
+  if (rec.notes) return rec.notes
+  const parts = [rec.inquiry, rec.special_notes, rec.guidance].filter(Boolean)
+  return parts.join('\n\n')
 }
 
 const LS_KEY = 'branchq:records'
