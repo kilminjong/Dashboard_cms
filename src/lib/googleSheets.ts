@@ -3,6 +3,10 @@
 
 const EDGE_FUNCTION_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/google-sheets`
 
+// 브랜치Q 컬럼의 시트 내 위치 (fetchCustomers 시 헤더 이름으로 탐지). 시트 쓰기 시 사용.
+let _branchqStatusIdx = -1
+let _branchqDateIdx = -1
+
 // 구글시트 컬럼 순서 (헤더 3행 기준 - 실제 시트 기준)
 const SHEET_COLUMNS = [
   'duplicate_check',       // 0: 중복체크
@@ -111,6 +115,11 @@ const HEADER_MAP: Record<string, string> = {
   '담당부서3': 'customer_department3',
   '담당연락처3': 'contact_phone3',
   '이메일3': 'contact_email3',
+  // 브랜치Q POC (시트 BM/BN 컬럼) — 읽기 전용. 헤더 이름으로 매칭하여 위치 변동에도 안전.
+  '브랜치Q 구축여부': 'branchq_status',
+  '브랜치Q구축여부': 'branchq_status',
+  '브랜치Q 구축일자': 'branchq_date',
+  '브랜치Q구축일자': 'branchq_date',
 }
 
 // 앞자리 0이 손실되면 안 되는 숫자 ID 필드 (고객번호, 사업자번호)
@@ -229,7 +238,21 @@ export async function fetchCustomers(): Promise<any[]> {
   // 신(新) Edge Function: rows(2D 원시값) 우선 사용 — 중복 헤더 문제 회피
   let customers: any[]
   if (Array.isArray(data.rows) && data.rows.length > 0) {
-    customers = data.rows.map((r: any) => rawRowToCustomer(r.values || [], r._rowIndex))
+    // 브랜치Q 컬럼은 헤더 이름으로 인덱스를 찾아 읽음 (위치 하드코딩 X → 컬럼 변동에 안전)
+    const headers: string[] = data.headers || []
+    const findIdx = (target: string) => headers.findIndex((h) => normalize(h) === normalize(target))
+    const bqStatusIdx = findIdx('브랜치Q 구축여부')
+    const bqDateIdx = findIdx('브랜치Q 구축일자')
+    _branchqStatusIdx = bqStatusIdx
+    _branchqDateIdx = bqDateIdx
+    customers = data.rows.map((r: any) => {
+      const c = rawRowToCustomer(r.values || [], r._rowIndex)
+      const vals = r.values || []
+      c._raw = Array.isArray(vals) ? [...vals] : []  // 원본 행 보존 (안전한 부분 수정용)
+      if (bqStatusIdx >= 0 && vals[bqStatusIdx] != null && vals[bqStatusIdx] !== '') c.branchq_status = String(vals[bqStatusIdx]).trim()
+      if (bqDateIdx >= 0 && vals[bqDateIdx] != null && vals[bqDateIdx] !== '') c.branchq_date = normalizeDate(String(vals[bqDateIdx]))
+      return c
+    })
   } else {
     const headers = data.headers || []
     customers = (data.data || []).map((row: any) => rowToCustomer(row, headers))
@@ -282,6 +305,33 @@ export async function updateCustomer(rowIndex: number, customer: any): Promise<b
   })
   const data = await res.json()
   if (!data.success) throw new Error(JSON.stringify(data))
+  return true
+}
+
+// 브랜치Q 구축여부/구축일자만 시트에 안전하게 반영.
+// 원본 행 전체(customer._raw)를 그대로 다시 쓰되 브랜치Q 두 칸만 교체 → 다른 컬럼 보존.
+export async function updateBranchqInSheet(customer: any, status: string, date: string): Promise<boolean> {
+  if (_branchqStatusIdx < 0 && _branchqDateIdx < 0) {
+    throw new Error('시트에서 브랜치Q 컬럼(헤더)을 찾지 못했습니다. 헤더명을 확인해주세요.')
+  }
+  if (!customer || !Array.isArray(customer._raw) || customer._rowIndex == null) {
+    throw new Error('원본 행 정보가 없어 시트에 반영할 수 없습니다. 목록을 새로고침 해주세요.')
+  }
+  const raw: string[] = [...customer._raw]
+  const maxIdx = Math.max(_branchqStatusIdx, _branchqDateIdx, raw.length - 1)
+  while (raw.length <= maxIdx) raw.push('')  // 브랜치Q 위치까지 길이 보장 (중간은 빈칸)
+  if (_branchqStatusIdx >= 0) raw[_branchqStatusIdx] = status || ''
+  if (_branchqDateIdx >= 0) raw[_branchqDateIdx] = date ? formatDateForSheet(date) : ''
+
+  const res = await fetch(EDGE_FUNCTION_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action: 'update', rowIndex: customer._rowIndex, rowData: raw }),
+  })
+  const data = await res.json()
+  if (!data.success) throw new Error(JSON.stringify(data))
+  // 로컬 캐시(_raw)도 갱신해 연속 저장 시 일관성 유지
+  customer._raw = raw
   return true
 }
 
