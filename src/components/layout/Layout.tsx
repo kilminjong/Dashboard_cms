@@ -15,6 +15,7 @@ import {
   TrendingUp,
   ClipboardList,
   PanelLeft,
+  Rocket,
 } from 'lucide-react'
 import { useState } from 'react'
 import { useNotification } from '../../hooks/useNotification'
@@ -35,6 +36,14 @@ const navItems = [
       { to: '/todo', label: '할 일 · 후속조치' },
       { to: '/renewals', label: '갱신 · 만료 관리' },
       { to: '/connections', label: '연계 현황 보드' },
+    ],
+  },
+  {
+    label: '브랜치Q 고객관리', icon: Rocket, children: [
+      { to: '/branchq', label: 'POC 대상고객' },
+      { to: '/branchq/status', label: 'POC 진행 현황' },
+      { to: '/branchq/voc', label: 'VOC 확인' },
+      { to: '/branchq/guides', label: '고객 안내 메뉴얼' },
     ],
   },
   {
@@ -60,7 +69,7 @@ export default function Layout() {
   const [collapsed, setCollapsed] = useState(() => localStorage.getItem('sidebarCollapsed') === '1')
   const toggleCollapsed = () => setCollapsed((v) => { const n = !v; localStorage.setItem('sidebarCollapsed', n ? '1' : '0'); return n })
   const [expandedMenu, setExpandedMenu] = useState<string | null>(
-    location.pathname.startsWith('/customers') ? '고객정보관리' : (location.pathname.startsWith('/todo') || location.pathname.startsWith('/renewals') || location.pathname.startsWith('/connections')) ? '업무 관리' : (location.pathname.startsWith('/reports') || location.pathname.startsWith('/kpi')) ? '보고서' : null
+    location.pathname.startsWith('/customers') ? '고객정보관리' : (location.pathname.startsWith('/todo') || location.pathname.startsWith('/renewals') || location.pathname.startsWith('/connections')) ? '업무 관리' : location.pathname.startsWith('/branchq') ? '브랜치Q 고객관리' : (location.pathname.startsWith('/reports') || location.pathname.startsWith('/kpi')) ? '보고서' : null
   )
   useNotification()
   useAutoBackup()
@@ -243,4 +252,3 @@ export default function Layout() {
     </div>
   )
 }
-
