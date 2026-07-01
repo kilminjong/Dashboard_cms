@@ -23,6 +23,7 @@ import BranchQList from './pages/BranchQList'
 import BranchQDetail from './pages/BranchQDetail'
 import BranchQStatus from './pages/BranchQStatus'
 import BranchQVoc from './pages/BranchQVoc'
+import BranchQNotes from './pages/BranchQNotes'
 import BranchQGuides from './pages/BranchQGuides'
 import BranchQGuideDetail from './pages/BranchQGuideDetail'
 import ProfilePage from './pages/Profile'
@@ -87,6 +88,7 @@ export default function App() {
           <Route path="/branchq" element={<BranchQList />} />
           <Route path="/branchq/status" element={<BranchQStatus />} />
           <Route path="/branchq/voc" element={<BranchQVoc />} />
+          <Route path="/branchq/notes" element={<BranchQNotes />} />
           <Route path="/branchq/guides" element={<BranchQGuides />} />
           <Route path="/branchq/guides/:id" element={<BranchQGuideDetail />} />
           <Route path="/branchq/customer/:id" element={<BranchQDetail />} />
