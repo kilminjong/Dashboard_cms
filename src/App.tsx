@@ -19,11 +19,20 @@ import CustomerSearch from './pages/CustomerSearch'
 import Todo from './pages/Todo'
 import Renewals from './pages/Renewals'
 import ConnectionBoard from './pages/ConnectionBoard'
+import BranchQList from './pages/BranchQList'
+import BranchQDetail from './pages/BranchQDetail'
+import BranchQStatus from './pages/BranchQStatus'
+import BranchQVoc from './pages/BranchQVoc'
+import BranchQGuides from './pages/BranchQGuides'
+import BranchQGuideDetail from './pages/BranchQGuideDetail'
 import ProfilePage from './pages/Profile'
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { session, profile, loading, refreshProfile } = useAuth()
   const [nameSetupDone, setNameSetupDone] = useState(false)
+
+  // [로컬 데모 확인용] 개발 모드에서는 로그인 없이 통과. 배포 빌드에는 영향 없음. 푸시 전 이 한 줄 삭제.
+  if (import.meta.env.DEV) return <>{children}</>
 
   if (loading) {
     return (
@@ -75,6 +84,12 @@ export default function App() {
           <Route path="/todo" element={<Todo />} />
           <Route path="/renewals" element={<Renewals />} />
           <Route path="/connections" element={<ConnectionBoard />} />
+          <Route path="/branchq" element={<BranchQList />} />
+          <Route path="/branchq/status" element={<BranchQStatus />} />
+          <Route path="/branchq/voc" element={<BranchQVoc />} />
+          <Route path="/branchq/guides" element={<BranchQGuides />} />
+          <Route path="/branchq/guides/:id" element={<BranchQGuideDetail />} />
+          <Route path="/branchq/customer/:id" element={<BranchQDetail />} />
           <Route path="/marketing" element={<Marketing />} />
           <Route path="/reports/builder" element={<ReportBuilder />} />
           <Route path="/reports" element={<Navigate to="/reports/builder" replace />} />
@@ -90,4 +105,3 @@ export default function App() {
     </BrowserRouter>
   )
 }
-
