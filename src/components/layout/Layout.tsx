@@ -42,6 +42,7 @@ const navItems = [
     label: '브랜치Q 고객관리', icon: Rocket, children: [
       { to: '/branchq', label: 'POC 대상고객' },
       { to: '/branchq/status', label: 'POC 진행 현황' },
+      { to: '/branchq/notes', label: '안내·문의 현황' },
       { to: '/branchq/voc', label: 'VOC 확인' },
       { to: '/branchq/guides', label: '고객 안내 메뉴얼' },
     ],
