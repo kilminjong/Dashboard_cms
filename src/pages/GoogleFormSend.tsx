@@ -8,7 +8,7 @@ import {
 } from '../lib/formSend'
 import { useAuth } from '../hooks/useAuth'
 import {
-  Send, RefreshCw, Save, Mail, CheckCircle2, Circle, Info, AlertTriangle, Users, MailWarning,
+  Send, RefreshCw, Save, Mail, CheckCircle2, Circle, Info, AlertTriangle, Users, MailWarning, Power, PowerOff,
 } from 'lucide-react'
 
 const isDev = (() => { try { return import.meta.env.DEV } catch { return false } })()
@@ -35,6 +35,7 @@ export default function GoogleFormSend() {
   const [savingConfig, setSavingConfig] = useState(false)
   const [sending, setSending] = useState(false)
   const [testMode, setTestMode] = useState(true)
+  const [showSendModal, setShowSendModal] = useState(false)
   const [msg, setMsg] = useState<{ type: 'ok' | 'err'; text: string } | null>(null)
 
   const load = async () => {
@@ -116,17 +117,40 @@ export default function GoogleFormSend() {
     }
   }
 
-  const doSend = async () => {
-    const recipients: Recipient[] = rows
-      .filter((r) => selected.has(r.key))
-      .map((r) => ({ name: r.name, biz: r.biz, email: (emailMap[r.key] || '').trim() }))
-      .filter((r) => r.email)
-    if (recipients.length === 0) { flash('err', '이메일이 입력된 대상이 없습니다.'); return }
-    const label = testMode ? `테스트(내 메일: ${myEmail})로 ${recipients.length}건` : `실제 ${recipients.length}개사`
-    if (!confirm(`${label} 발송하시겠습니까?`)) return
+  // 자동발송 ON/OFF (즉시 저장)
+  const toggleAuto = async () => {
+    const next = (config.auto_enabled || 'on') === 'off' ? 'on' : 'off'
+    const updated = { ...config, auto_enabled: next }
+    setConfig(updated)
+    try {
+      await saveMailConfig(updated)
+      flash('ok', `매주 목요일 자동발송을 ${next === 'on' ? '켰습니다' : '껐습니다'}.`)
+    } catch (e: any) {
+      setConfig(config) // 롤백
+      flash('err', `변경 실패: ${e.message || e}`)
+    }
+  }
+  const autoOn = (config.auto_enabled || 'on') !== 'off'
+
+  // 발송 대상(선택 + 이메일 보유)
+  const sendRecipients = useMemo<Recipient[]>(() => rows
+    .filter((r) => selected.has(r.key))
+    .map((r) => ({ name: r.name, biz: r.biz, email: (emailMap[r.key] || '').trim() }))
+    .filter((r) => r.email), [rows, selected, emailMap])
+
+  // [발송] 클릭 → 검증 후 확인 모달 오픈
+  const openSend = () => {
+    if (sendRecipients.length === 0) { flash('err', '이메일이 입력된 대상이 없습니다. 고객을 체크하고 이메일을 확인해주세요.'); return }
+    if (testMode && !myEmail) { flash('err', '테스트 받을 내 로그인 이메일을 확인할 수 없습니다. 로그인 상태를 확인해주세요.'); return }
+    setShowSendModal(true)
+  }
+
+  // 모달 확인 → 실제 발송
+  const confirmSend = async () => {
+    setShowSendModal(false)
     setSending(true)
     try {
-      const res = await sendReminder({ templateKey: 'remind', recipients, testEmail: testMode ? myEmail : undefined })
+      const res = await sendReminder({ templateKey: 'remind', recipients: sendRecipients, testEmail: testMode ? myEmail : undefined })
       flash('ok', `발송 완료 · 성공 ${res.sent}건${res.failed ? `, 실패 ${res.failed}건` : ''}`)
     } catch (e: any) {
       flash('err', `발송 실패: ${e.message || e}`)
@@ -164,6 +188,25 @@ export default function GoogleFormSend() {
           <div>구글폼 응답 스프레드시트에 <b>‘메일양식’</b>·<b>‘발송대상’</b> 탭이 아직 없습니다. 두 탭을 만든 뒤 저장하면 자동발송이 동작합니다. (하단 안내 참고)</div>
         </div>
       )}
+
+      {/* 자동발송 ON/OFF */}
+      <div className={`mb-4 rounded-xl border px-5 py-3.5 flex items-center justify-between gap-3 ${autoOn ? 'bg-emerald-50/60 border-emerald-100' : 'bg-gray-50 border-gray-200'}`}>
+        <div className="flex items-center gap-3 min-w-0">
+          <span className={`w-9 h-9 rounded-lg grid place-items-center shrink-0 ${autoOn ? 'bg-emerald-600' : 'bg-gray-400'}`}>
+            {autoOn ? <Power size={17} className="text-white" /> : <PowerOff size={17} className="text-white" />}
+          </span>
+          <div className="min-w-0">
+            <p className={`text-sm font-bold ${autoOn ? 'text-emerald-800' : 'text-gray-600'}`}>매주 목요일 자동발송 {autoOn ? 'ON' : 'OFF'}</p>
+            <p className={`text-xs ${autoOn ? 'text-emerald-700/70' : 'text-gray-400'}`}>
+              {autoOn ? '매주 목요일 전체 발송대상에게 [자동발송] 양식이 자동 발송됩니다.' : '자동발송이 꺼져 있습니다. (수동 발송 버튼은 계속 사용 가능)'}
+            </p>
+          </div>
+        </div>
+        <button onClick={toggleAuto} role="switch" aria-checked={autoOn}
+          className={`relative inline-flex h-6 w-11 shrink-0 rounded-full transition-colors ${autoOn ? 'bg-emerald-600' : 'bg-gray-300'}`}>
+          <span className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform mt-0.5 ${autoOn ? 'translate-x-5' : 'translate-x-0.5'}`} />
+        </button>
+      </div>
 
       {/* 메일 양식 */}
       <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-5 mb-4">
@@ -226,7 +269,7 @@ export default function GoogleFormSend() {
             <input type="checkbox" checked={testMode} onChange={(e) => setTestMode(e.target.checked)} className="accent-emerald-600" />
             테스트 발송(내 메일로만)
           </label>
-          <button onClick={doSend} disabled={sending} className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-bold bg-emerald-600 text-white hover:bg-emerald-700 transition disabled:opacity-50">
+          <button onClick={openSend} disabled={sending} className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-bold bg-emerald-600 text-white hover:bg-emerald-700 transition disabled:opacity-50">
             {sending ? <RefreshCw size={13} className="animate-spin" /> : <Send size={13} />} {testMode ? '테스트 발송' : '리마인드 발송'}
           </button>
         </div>
@@ -267,6 +310,47 @@ export default function GoogleFormSend() {
           <p className="mt-1 text-blue-700/70">Apps Script 코드는 담당 개발자에게 요청하세요. 처음엔 <b>테스트 발송</b>으로 확인 후 실제 발송을 권장합니다.</p>
         </div>
       </div>
+
+      {/* 발송 확인 모달 */}
+      {showSendModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={() => setShowSendModal(false)}>
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-6" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center gap-2.5 mb-3">
+              <span className={`w-10 h-10 rounded-full grid place-items-center ${testMode ? 'bg-blue-100' : 'bg-emerald-100'}`}>
+                <Send size={18} className={testMode ? 'text-blue-600' : 'text-emerald-600'} />
+              </span>
+              <h3 className="text-lg font-bold text-gray-800">{testMode ? '테스트 발송' : '리마인드 발송'}</h3>
+            </div>
+
+            {testMode ? (
+              <p className="text-sm text-gray-600 leading-relaxed mb-1">
+                <b className="text-blue-700">테스트 미리보기</b>를 <b>내 메일({myEmail})</b>로 발송합니다.
+                고객에게는 전송되지 않습니다.
+              </p>
+            ) : (
+              <p className="text-sm text-gray-600 leading-relaxed mb-1">
+                선택한 <b className="text-emerald-700">{sendRecipients.length}개 업체</b>에게 <b>추가발송(리마인드) 양식</b>으로 메일을 발송합니다.
+              </p>
+            )}
+            <p className="text-xs text-gray-400 leading-relaxed mb-5">
+              {testMode
+                ? '실제 발송 전 양식·내용 확인용입니다. 대표 1통이 내 메일함으로 옵니다.'
+                : '⚠️ 실제 고객에게 즉시 발송됩니다. 대상과 이메일을 다시 확인하세요.'}
+            </p>
+
+            <div className="flex gap-2 justify-end">
+              <button onClick={() => setShowSendModal(false)}
+                className="px-4 py-2 rounded-lg text-sm font-medium border border-gray-200 text-gray-600 hover:bg-gray-50 transition">
+                취소
+              </button>
+              <button onClick={confirmSend}
+                className={`px-4 py-2 rounded-lg text-sm font-bold text-white transition inline-flex items-center gap-1.5 ${testMode ? 'bg-blue-600 hover:bg-blue-700' : 'bg-emerald-600 hover:bg-emerald-700'}`}>
+                <Send size={15} /> {testMode ? '테스트 발송' : '발송하기'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
