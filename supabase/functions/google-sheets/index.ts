@@ -75,8 +75,12 @@ Deno.serve(async (req) => {
     const baseUrl = `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}`
     const encodedSheet = encodeURIComponent(sheetName)
 
-    const { action, rowIndex, rowData, customerId, memo } = await req.json()
+    const { action, rowIndex, rowData, customerId, memo, config, recipients, sendPayload } = await req.json()
     const encodedMemoSheet = encodeURIComponent('memos')
+
+    // 구글폼 응답/설정 스프레드시트 (별도 문서 우선)
+    const formSheetId = Deno.env.get('GOOGLE_FORM_SHEET_ID') || sheetId
+    const formBaseUrl = `https://sheets.googleapis.com/v4/spreadsheets/${formSheetId}`
 
     if (action === 'read') {
       const res = await fetch(`${baseUrl}/values/'${encodedSheet}'!A3:BK`, {
@@ -199,9 +203,6 @@ Deno.serve(async (req) => {
     // 응답 탭 이름은 자동 감지(form_responses / "설문지 응답" / "Form Responses" / 첫 시트).
     // 헤더(1행) + 데이터(2행~)를 원시 2D값으로 반환 — 문항이 바뀌어도 프론트에서 헤더 기준 파싱.
     if (action === 'readFormResponses') {
-      const formSheetId = Deno.env.get('GOOGLE_FORM_SHEET_ID') || sheetId
-      const formBaseUrl = `https://sheets.googleapis.com/v4/spreadsheets/${formSheetId}`
-
       // 응답 탭 제목 자동 감지
       const metaRes = await fetch(`${formBaseUrl}?fields=sheets.properties`, { headers: { Authorization: `Bearer ${token}` } })
       const meta = await metaRes.json()
@@ -224,6 +225,74 @@ Deno.serve(async (req) => {
       const headers = values[0] || []
       const rows = values.slice(1).filter((r: string[]) => r && r.some((c) => c && String(c).trim()))
       return new Response(JSON.stringify({ headers, rows, tab: tabTitle }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
+    }
+
+    // ── 메일 발송 설정 (메일양식 탭: A=key, B=value) ──
+    // keys: auto_subject, auto_body, remind_subject, remind_body, form_link, apps_script_url
+    const encodedConfigSheet = encodeURIComponent('메일양식')
+    if (action === 'readFormConfig') {
+      const res = await fetch(`${formBaseUrl}/values/'${encodedConfigSheet}'!A1:B50`, {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      const data = await res.json()
+      const cfg: Record<string, string> = {}
+      if (!data.error) {
+        for (const row of (data.values || [])) {
+          if (row[0]) cfg[String(row[0]).trim()] = row[1] != null ? String(row[1]) : ''
+        }
+      }
+      return new Response(JSON.stringify({ config: cfg, missing: !!data.error }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
+    }
+
+    if (action === 'writeFormConfig') {
+      const keys = ['auto_subject', 'auto_body', 'remind_subject', 'remind_body', 'form_link', 'apps_script_url']
+      const values = keys.map((k) => [k, (config && config[k]) || ''])
+      const res = await fetch(`${formBaseUrl}/values/'${encodedConfigSheet}'!A1:B${keys.length}?valueInputOption=RAW`, {
+        method: 'PUT',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ values }),
+      })
+      const result = await res.json()
+      if (result.error) return new Response(JSON.stringify({ error: result.error.message || "'메일양식' 탭이 없습니다. 시트에 탭을 먼저 만들어주세요." }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
+      return new Response(JSON.stringify({ success: true }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
+    }
+
+    // ── 발송 대상 명단 (발송대상 탭: 업체명 | 사업자번호 | 이메일) ──
+    const encodedRecipSheet = encodeURIComponent('발송대상')
+    if (action === 'writeRecipients') {
+      const rows = [['업체명', '사업자번호', '이메일'], ...((recipients || []).map((r: any) => [r.name || '', r.biz || '', r.email || '']))]
+      // 기존 내용 비우고 다시 쓰기
+      await fetch(`${formBaseUrl}/values/'${encodedRecipSheet}'!A1:C10000:clear`, {
+        method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body: '{}',
+      })
+      const res = await fetch(`${formBaseUrl}/values/'${encodedRecipSheet}'!A1?valueInputOption=RAW`, {
+        method: 'PUT',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ values: rows }),
+      })
+      const result = await res.json()
+      if (result.error) return new Response(JSON.stringify({ error: result.error.message || "'발송대상' 탭이 없습니다. 시트에 탭을 먼저 만들어주세요." }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
+      return new Response(JSON.stringify({ success: true, count: (recipients || []).length }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
+    }
+
+    // ── 수동 발송: Apps Script 웹앱으로 프록시 (브라우저 CORS 회피) ──
+    if (action === 'sendReminder') {
+      // Apps Script URL은 메일양식 탭에서 읽음
+      const cfgRes = await fetch(`${formBaseUrl}/values/'${encodedConfigSheet}'!A1:B50`, { headers: { Authorization: `Bearer ${token}` } })
+      const cfgData = await cfgRes.json()
+      let scriptUrl = ''
+      for (const row of (cfgData.values || [])) { if (String(row[0]).trim() === 'apps_script_url') scriptUrl = String(row[1] || '').trim() }
+      if (!scriptUrl) return new Response(JSON.stringify({ error: 'Apps Script 웹앱 URL이 설정되지 않았습니다. 발송 관리에서 먼저 등록해주세요.' }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
+      const resp = await fetch(scriptUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(sendPayload || {}),
+        redirect: 'follow',
+      })
+      const text = await resp.text()
+      let result: any
+      try { result = JSON.parse(text) } catch { result = { raw: text } }
+      return new Response(JSON.stringify({ success: resp.ok, result }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
     }
 
     return new Response(JSON.stringify({ error: 'Unknown action' }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
