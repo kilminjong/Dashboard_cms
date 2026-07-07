@@ -5,13 +5,22 @@ import { loadBranchqRecords, DEV_MOCK_CUSTOMERS, type BranchQRecord } from '../l
 import { getPocStart, setPocStart } from '../lib/pocSettings'
 import {
   loadFormResponses, computeStats, participationTrendPoc, byWeekday, getWeekKey, formatKST,
-  answerDistributions, currentPocWeek,
+  answerDistributions, currentPocWeek, pocWeekSlots,
   type FormResponse,
 } from '../lib/googleForm'
 import {
   ClipboardCheck, RefreshCw, ChevronRight, Users, MailCheck, TrendingUp,
-  CalendarClock, AlertTriangle, Info, ArrowRight, Rocket, PlayCircle, Trophy, BarChart3,
+  CalendarClock, AlertTriangle, Info, ArrowRight, Rocket, PlayCircle, BarChart3, Download, TrendingDown,
 } from 'lucide-react'
+import * as XLSX from 'xlsx'
+
+// 순위 배지 색상 (1등 금, 2등 은, 3등 동)
+function rankTone(i: number): string {
+  if (i === 0) return 'bg-amber-400 text-white'
+  if (i === 1) return 'bg-slate-400 text-white'
+  if (i === 2) return 'bg-orange-400 text-white'
+  return 'bg-gray-200 text-gray-500'
+}
 import {
   ResponsiveContainer, Tooltip, XAxis, YAxis, CartesianGrid, ComposedChart, Bar, Line, BarChart,
 } from 'recharts'
@@ -80,6 +89,53 @@ export default function GoogleFormDashboard() {
   const recentResponses = useMemo(() =>
     [...responses].sort((a, b) => (a.submitted_at < b.submitted_at ? 1 : -1)).slice(0, 8), [responses])
 
+  // 주차 키 → 라벨 (엑셀·표시용)
+  const weekKeyToLabel = useMemo(() => {
+    const m = new Map<string, string>()
+    pocWeekSlots(pocStart, 60).forEach((s) => m.set(s.weekKey, s.label))
+    return m
+  }, [pocStart])
+
+  // 이탈 위험: 한 번이라도 응답했으나 최근 2주+ 연속 미참여
+  const churnRisk = useMemo(() => {
+    const slots = pocWeekSlots(pocStart, 8)
+    return targets.map((t) => {
+      const resp = responses.filter((r) => r.customer_number === t.biz || r.customer_name === t.name)
+      if (resp.length === 0) return null
+      let miss = 0
+      for (let i = slots.length - 1; i >= 0; i--) {
+        if (resp.some((r) => getWeekKey(r.submitted_at) === slots[i].weekKey)) break
+        miss++
+      }
+      if (miss < 2) return null
+      const last = [...resp].sort((a, b) => (a.submitted_at < b.submitted_at ? 1 : -1))[0]
+      return { ...t, miss, lastAt: last.submitted_at }
+    }).filter(Boolean) as { biz: string; name: string; miss: number; lastAt: string }[]
+  }, [targets, responses, pocStart])
+
+  // 엑셀 다운로드 (전체 응답을 평면 표로)
+  const exportExcel = () => {
+    const questions = Array.from(new Set(responses.flatMap((r) => r.answers.map((a) => a.question))))
+    const rows = [...responses].sort((a, b) => (a.submitted_at < b.submitted_at ? 1 : -1)).map((r) => {
+      const t = formatKST(r.submitted_at)
+      const base: Record<string, string> = {
+        업체명: r.customer_name || '',
+        사업자번호: /^\d+$/.test(r.customer_number) ? r.customer_number : '',
+        이메일: r.respondent_email || '',
+        제출일: t.date,
+        요일: t.weekday,
+        제출시각: t.time,
+        주차: weekKeyToLabel.get(getWeekKey(r.submitted_at)) || '',
+      }
+      questions.forEach((q) => { base[q] = r.answers.find((a) => a.question === q)?.answer || '' })
+      return base
+    })
+    const ws = XLSX.utils.json_to_sheet(rows)
+    const wb = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(wb, ws, '구글폼응답')
+    XLSX.writeFile(wb, `구글폼응답_${new Date().toISOString().slice(0, 10)}.xlsx`)
+  }
+
   if (loading) return <div className="flex items-center justify-center py-20"><RefreshCw size={24} className="animate-spin text-emerald-500" /></div>
 
   const cards = [
@@ -100,6 +156,9 @@ export default function GoogleFormDashboard() {
         <div className="flex items-center gap-2">
           <button onClick={() => navigate('/branchq/form/detail')} className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium bg-emerald-600 text-white hover:bg-emerald-700 transition">
             상세관리 <ArrowRight size={15} />
+          </button>
+          <button onClick={exportExcel} disabled={responses.length === 0} className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium border border-gray-200 text-gray-600 hover:bg-gray-50 transition disabled:opacity-40 disabled:cursor-not-allowed">
+            <Download size={15} /> 엑셀
           </button>
           <button onClick={handleRefresh} disabled={refreshing} className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium border border-gray-200 text-gray-600 hover:bg-gray-50 transition">
             <RefreshCw size={15} className={refreshing ? 'animate-spin' : ''} /> 새로고침
@@ -199,18 +258,19 @@ export default function GoogleFormDashboard() {
                 return (
                   <div key={d.question} className="rounded-xl border border-gray-100 p-4">
                     <p className="text-sm font-semibold text-gray-800 mb-0.5 leading-snug">{d.question}</p>
-                    <p className="text-xs text-gray-400 mb-3">응답 {d.total}건</p>
-                    <div className="space-y-2">
+                    <p className="text-xs text-gray-400 mb-3">응답 {d.total}건 · {d.options.length}개 선택지</p>
+                    <div className="space-y-2.5">
                       {d.options.map((o, i) => (
-                        <div key={o.answer}>
-                          <div className="flex items-center justify-between text-xs mb-1">
-                            <span className={`truncate ${i === 0 ? 'font-bold text-emerald-700' : 'text-gray-600'}`}>
-                              {i === 0 && <Trophy size={11} className="inline mr-1 -mt-0.5 text-amber-500" />}{o.answer}
-                            </span>
-                            <span className={`tabular-nums shrink-0 ml-2 ${i === 0 ? 'font-bold text-emerald-700' : 'text-gray-400'}`}>{o.count}건 · {o.pct}%</span>
-                          </div>
-                          <div className="w-full bg-gray-100 rounded-full h-2 overflow-hidden">
-                            <div className={i === 0 ? 'bg-emerald-500 h-full rounded-full' : 'bg-emerald-300 h-full rounded-full'} style={{ width: `${(o.count / max) * 100}%` }} />
+                        <div key={o.answer} className="flex items-center gap-2.5">
+                          <span className={`inline-grid place-items-center w-5 h-5 rounded-full text-[10px] font-bold shrink-0 ${rankTone(i)}`}>{i + 1}</span>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center justify-between text-xs mb-1">
+                              <span className={`truncate ${i === 0 ? 'font-bold text-emerald-700' : 'text-gray-600'}`}>{o.answer}</span>
+                              <span className={`tabular-nums shrink-0 ml-2 ${i === 0 ? 'font-bold text-emerald-700' : 'text-gray-400'}`}>{o.count}건 · {o.pct}%</span>
+                            </div>
+                            <div className="w-full bg-gray-100 rounded-full h-2 overflow-hidden">
+                              <div className={i === 0 ? 'bg-emerald-500 h-full rounded-full' : 'bg-emerald-300 h-full rounded-full'} style={{ width: `${(o.count / max) * 100}%` }} />
+                            </div>
                           </div>
                         </div>
                       ))}
@@ -244,6 +304,33 @@ export default function GoogleFormDashboard() {
           </div>
         )}
       </div>
+
+      {/* 이탈 위험 업체 (참여하다 2주+ 연속 미응답) */}
+      {churnRisk.length > 0 && (
+        <div className="bg-white rounded-xl border border-red-100 shadow-sm overflow-hidden mb-5">
+          <div className="px-5 py-3 border-b border-red-100 bg-red-50/60 flex items-center gap-2">
+            <TrendingDown size={15} className="text-red-500" />
+            <h3 className="font-semibold text-red-700 text-sm">이탈 위험 업체</h3>
+            <span className="text-xs text-red-400">참여하다 최근 2주 이상 연속 미응답</span>
+            <span className="ml-auto text-xs font-bold text-red-600">{churnRisk.length}개사</span>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-px bg-gray-50">
+            {churnRisk.sort((a, b) => b.miss - a.miss).map((c) => {
+              const t = formatKST(c.lastAt)
+              return (
+                <div key={c.biz || c.name} onClick={() => navigate(`/branchq/form/detail?c=${encodeURIComponent(c.biz || c.name)}`)}
+                  className="bg-white px-4 py-3 hover:bg-red-50/40 cursor-pointer transition flex items-center justify-between gap-2 group">
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium text-gray-800 group-hover:text-red-700 truncate">{c.name}</p>
+                    <p className="text-xs text-gray-400">최근 응답 {t.date}</p>
+                  </div>
+                  <span className="text-xs font-bold text-red-600 shrink-0 bg-red-50 px-2 py-1 rounded-lg">{c.miss}주 미응답</span>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-5">
         {/* 최근 응답 */}
