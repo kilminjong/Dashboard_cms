@@ -193,6 +193,39 @@ Deno.serve(async (req) => {
       return new Response(JSON.stringify({ success: true, result }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
     }
 
+    // ── 구글폼 응답 시트 ──
+    // 구글폼 응답을 연결한 스프레드시트에서 읽음. 기본은 별도 문서(GOOGLE_FORM_SHEET_ID),
+    // 미설정 시 기존 CMS 문서(GOOGLE_SHEET_ID) 내 탭을 사용.
+    // 응답 탭 이름은 자동 감지(form_responses / "설문지 응답" / "Form Responses" / 첫 시트).
+    // 헤더(1행) + 데이터(2행~)를 원시 2D값으로 반환 — 문항이 바뀌어도 프론트에서 헤더 기준 파싱.
+    if (action === 'readFormResponses') {
+      const formSheetId = Deno.env.get('GOOGLE_FORM_SHEET_ID') || sheetId
+      const formBaseUrl = `https://sheets.googleapis.com/v4/spreadsheets/${formSheetId}`
+
+      // 응답 탭 제목 자동 감지
+      const metaRes = await fetch(`${formBaseUrl}?fields=sheets.properties`, { headers: { Authorization: `Bearer ${token}` } })
+      const meta = await metaRes.json()
+      if (meta.error) {
+        return new Response(JSON.stringify({ error: meta.error.message || '응답 스프레드시트에 접근할 수 없습니다. 서비스 계정에 공유했는지 확인하세요.', headers: [], rows: [] }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
+      }
+      const sheetsArr = meta.sheets || []
+      const pick = sheetsArr.find((s: any) => /form_responses|응답|response/i.test(s.properties?.title || '')) || sheetsArr[0]
+      const tabTitle = pick?.properties?.title || 'form_responses'
+      const encodedFormSheet = encodeURIComponent(tabTitle)
+
+      const res = await fetch(`${formBaseUrl}/values/'${encodedFormSheet}'!A1:Z`, {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      const data = await res.json()
+      if (data.error) {
+        return new Response(JSON.stringify({ error: data.error.message || `'${tabTitle}' 탭을 읽을 수 없습니다.`, headers: [], rows: [] }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
+      }
+      const values = data.values || []
+      const headers = values[0] || []
+      const rows = values.slice(1).filter((r: string[]) => r && r.some((c) => c && String(c).trim()))
+      return new Response(JSON.stringify({ headers, rows, tab: tabTitle }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
+    }
+
     return new Response(JSON.stringify({ error: 'Unknown action' }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
   } catch (e) {
     return new Response(JSON.stringify({ error: String(e) }), { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } })

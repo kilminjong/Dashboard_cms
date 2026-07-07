@@ -47,7 +47,7 @@ const CUSTOMER_FIELDS: { key: string; label: string; required?: boolean; type?: 
 ]
 
 const TABLE_COLUMNS = [
-  'management_code', 'customer_name', 'customer_number', 'business_number', 'manager', 'opening_status', 'opening_date',
+  'management_code', 'customer_name', 'customer_number', 'business_number', 'manager', 'management_type', 'opening_status', 'opening_date',
   'connection_status', 'connection_date', 'termination_date', 'erp_company',
 ]
 
@@ -634,6 +634,14 @@ export default function Customers() {
     return 'bg-gray-100 text-gray-600'
   }
 
+  // 관리구분 색상: 정상=초록 / 해지=빨강 / 취소=노랑
+  const mgmtBadge = (v: string) => {
+    if (v === '정상') return 'bg-emerald-100 text-emerald-800'
+    if (v === '해지') return 'bg-red-100 text-red-800'
+    if (v === '취소') return 'bg-amber-100 text-amber-800'
+    return 'bg-gray-100 text-gray-600'
+  }
+
   return (
     <div>
       {/* 동기화 로딩 오버레이 */}
@@ -934,6 +942,15 @@ export default function Customers() {
                           >
                             {(c as any)[col]}
                           </a>
+                        ) : col === 'management_type' ? (
+                          <select
+                            value={(c as any)[col] || ''}
+                            onChange={(e) => { e.stopPropagation(); handleInlineChange(c.id, 'management_type', e.target.value) }}
+                            className={`px-2 py-0.5 rounded-full text-xs font-medium border-0 cursor-pointer ${mgmtBadge((c as any)[col])} focus:ring-2 focus:ring-emerald-500 outline-none`}
+                          >
+                            <option value="">-</option>
+                            {['정상', '해지', '취소'].map((s) => <option key={s} value={s}>{s}</option>)}
+                          </select>
                         ) : col === 'opening_status' ? (
                           <select
                             value={(c as any)[col] || ''}
