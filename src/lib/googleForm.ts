@@ -219,6 +219,119 @@ export function weeklyParticipation(responses: FormResponse[], weeks = 8) {
   })
 }
 
+// ── POC 시작일 기준 상대 주차 ──
+// 해당 주의 월요일 0시
+function mondayOf(d: Date): Date {
+  const x = new Date(d.getFullYear(), d.getMonth(), d.getDate())
+  const day = (x.getDay() + 6) % 7 // 월=0
+  x.setDate(x.getDate() - day)
+  x.setHours(0, 0, 0, 0)
+  return x
+}
+
+export interface WeekSlot { weekKey: string; index: number; label: string }
+
+// 표시할 주차 슬롯 목록 (오래된 → 최신)
+// - POC 시작(startISO) 있으면: 1주차 ~ 현재 주차 (라벨 "N주차"), 최근 maxWeeks개만
+// - 시작 전(null): 최근 maxWeeks주 (라벨 "M/D" = 주 시작일)
+export function pocWeekSlots(startISO: string | null, maxWeeks = 12): WeekSlot[] {
+  const now = new Date()
+  if (startISO) {
+    const start = mondayOf(new Date(startISO))
+    const cur = mondayOf(now)
+    const total = Math.max(1, Math.floor((cur.getTime() - start.getTime()) / (7 * 86400000)) + 1)
+    const slots: WeekSlot[] = []
+    for (let i = 0; i < total; i++) {
+      const wk = new Date(start); wk.setDate(start.getDate() + i * 7)
+      slots.push({ weekKey: getWeekKey(wk.toISOString()), index: i + 1, label: `${i + 1}주차` })
+    }
+    return slots.slice(-maxWeeks)
+  }
+  const slots: WeekSlot[] = []
+  for (let i = maxWeeks - 1; i >= 0; i--) {
+    const d = new Date(now); d.setDate(now.getDate() - i * 7)
+    const mon = mondayOf(d)
+    slots.push({ weekKey: getWeekKey(mon.toISOString()), index: maxWeeks - i, label: `${mon.getMonth() + 1}/${mon.getDate()}` })
+  }
+  return slots
+}
+
+// 현재가 POC 몇 주차인지 (시작 전이면 0)
+export function currentPocWeek(startISO: string | null): number {
+  if (!startISO) return 0
+  const start = mondayOf(new Date(startISO))
+  const cur = mondayOf(new Date())
+  return Math.max(1, Math.floor((cur.getTime() - start.getTime()) / (7 * 86400000)) + 1)
+}
+
+// 특정 고객의 주차별 참여 (POC 시작일 기준)
+export function weeklyParticipationPoc(responses: FormResponse[], startISO: string | null, maxWeeks = 12) {
+  return pocWeekSlots(startISO, maxWeeks).map((s) => {
+    const resp = responses.find((r) => getWeekKey(r.submitted_at) === s.weekKey) || null
+    return { ...s, participated: !!resp, response: resp }
+  })
+}
+
+// 주차별 참여 추이 (POC 시작일 기준, 차트용)
+export function participationTrendPoc(responses: FormResponse[], totalTargets: number, startISO: string | null, maxWeeks = 12) {
+  return pocWeekSlots(startISO, maxWeeks).map((s) => {
+    const inWeek = responses.filter((r) => getWeekKey(r.submitted_at) === s.weekKey)
+    const companies = new Set(inWeek.map((r) => r.customer_number).filter(Boolean))
+    return {
+      week: s.weekKey,
+      label: s.label,
+      index: s.index,
+      responses: inWeek.length,
+      companies: companies.size,
+      rate: totalTargets > 0 ? Math.round((companies.size / totalTargets) * 100) : 0,
+    }
+  })
+}
+
+// ── 문항별 응답 분포 (선택지 집계) ──
+export interface AnswerOption { answer: string; count: number; pct: number }
+export interface QuestionDist {
+  question: string
+  total: number           // 이 문항에 답한 응답 수
+  isChoice: boolean       // true=선택형(막대 집계), false=주관식(자유 텍스트)
+  options: AnswerOption[] // 선택형일 때 답변별 집계 (많은 순)
+  samples: string[]       // 주관식일 때 최근 샘플 답변
+}
+
+export function answerDistributions(responses: FormResponse[]): QuestionDist[] {
+  const order: string[] = []           // 문항 첫 등장 순서 보존
+  const qMap = new Map<string, string[]>()
+  const sorted = [...responses].sort((a, b) => (a.submitted_at < b.submitted_at ? -1 : 1)) // 오래된→최신
+  sorted.forEach((r) => r.answers.forEach((a) => {
+    if (!qMap.has(a.question)) { qMap.set(a.question, []); order.push(a.question) }
+    qMap.get(a.question)!.push(a.answer)
+  }))
+
+  return order.map((question) => {
+    const answers = qMap.get(question)!.filter((a) => a && a.trim())
+    const total = answers.length
+    const uniq = new Set(answers)
+    const looksLongText = answers.some((a) => a.length > 60)
+    const isChoice = !looksLongText && uniq.size <= 15 && (total < 5 || uniq.size <= Math.ceil(total * 0.85))
+
+    let options: AnswerOption[] = []
+    if (isChoice) {
+      const counter = new Map<string, number>()
+      answers.forEach((a) => {
+        // 체크박스(복수선택)는 콤마로 분해
+        const parts = a.split(/\s*,\s*/).map((s) => s.trim()).filter(Boolean)
+        const buckets = parts.length ? parts : [a]
+        buckets.forEach((b) => counter.set(b, (counter.get(b) || 0) + 1))
+      })
+      options = [...counter.entries()]
+        .map(([answer, count]) => ({ answer, count, pct: total > 0 ? Math.round((count / total) * 100) : 0 }))
+        .sort((a, b) => b.count - a.count)
+    }
+    const samples = isChoice ? [] : [...answers].reverse().slice(0, 3)
+    return { question, total, isChoice, options, samples }
+  })
+}
+
 // ── 로드 ──
 const LS_KEY = 'branchq:formResponses'
 function lsLoad(): FormResponse[] {
