@@ -71,6 +71,21 @@ create policy "branchq_voc authenticated all"
 
 
 -- ============================================================
+-- 앱 공유 설정 테이블 (key-value) — 예: poc_start_date (POC 시범사업 시작일)
+-- ============================================================
+create table if not exists public.branchq_settings (
+  key         text primary key,
+  value       text,
+  updated_at  timestamptz default now()
+);
+
+alter table public.branchq_settings enable row level security;
+drop policy if exists "branchq_settings authenticated all" on public.branchq_settings;
+create policy "branchq_settings authenticated all"
+  on public.branchq_settings for all to authenticated using (true) with check (true);
+
+
+-- ============================================================
 -- 안내 메뉴얼(가이드) 테이블 — steps는 JSONB 배열
 -- ============================================================
 create table if not exists public.branchq_guides (
