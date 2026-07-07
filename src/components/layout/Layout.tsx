@@ -44,6 +44,7 @@ const navItems = [
       { to: '/branchq/status', label: 'POC 진행 현황' },
       { to: '/branchq/form', label: '구글폼 대시보드' },
       { to: '/branchq/form/detail', label: '└ 상세관리' },
+      { to: '/branchq/form/send', label: '└ 설문 발송 관리' },
       { to: '/branchq/notes', label: '안내·문의 현황' },
       { to: '/branchq/voc', label: 'VOC 확인' },
       { to: '/branchq/guides', label: '고객 안내 메뉴얼' },
