@@ -13,6 +13,7 @@ export interface MailConfig {
   remind_body: string
   form_link: string
   apps_script_url: string
+  auto_enabled: string // 'on' | 'off' — 매주 목요일 자동발송 on/off
 }
 
 export const DEFAULT_MAIL_CONFIG: MailConfig = {
@@ -36,6 +37,7 @@ export const DEFAULT_MAIL_CONFIG: MailConfig = {
 감사합니다.`,
   form_link: '',
   apps_script_url: '',
+  auto_enabled: 'on',
 }
 
 export async function loadMailConfig(): Promise<{ config: MailConfig; missing: boolean }> {
