@@ -335,6 +335,29 @@ export async function updateBranchqInSheet(customer: any, status: string, date: 
   return true
 }
 
+// 고객원장의 이메일(contact_email, 컬럼 index 14)만 안전하게 반영.
+// 원본 행 전체(customer._raw)를 다시 쓰되 이메일 칸만 교체 → 다른 컬럼 보존.
+export async function updateCustomerEmailInSheet(customer: any, email: string): Promise<boolean> {
+  const idx = SHEET_COLUMNS.indexOf('contact_email') // 14
+  if (idx < 0) throw new Error('이메일 컬럼 위치를 찾지 못했습니다.')
+  if (!customer || !Array.isArray(customer._raw) || customer._rowIndex == null) {
+    throw new Error('원본 행 정보가 없어 시트에 반영할 수 없습니다. 목록을 새로고침 해주세요.')
+  }
+  const raw: string[] = [...customer._raw]
+  while (raw.length <= idx) raw.push('')
+  raw[idx] = email || ''
+  const res = await fetch(EDGE_FUNCTION_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action: 'update', rowIndex: customer._rowIndex, rowData: raw }),
+  })
+  const data = await res.json()
+  if (!data.success) throw new Error(JSON.stringify(data))
+  customer._raw = raw
+  customer.contact_email = email
+  return true
+}
+
 export async function deleteCustomer(rowIndex: number): Promise<boolean> {
   const res = await fetch(EDGE_FUNCTION_URL, {
     method: 'POST',
