@@ -2,13 +2,15 @@ import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { fetchCustomers } from '../lib/googleSheets'
 import { loadBranchqRecords, DEV_MOCK_CUSTOMERS, type BranchQRecord } from '../lib/branchq'
+import { getPocStart, setPocStart } from '../lib/pocSettings'
 import {
-  loadFormResponses, computeStats, participationByWeek, byWeekday, getWeekKey, formatKST,
+  loadFormResponses, computeStats, participationTrendPoc, byWeekday, getWeekKey, formatKST,
+  answerDistributions, currentPocWeek,
   type FormResponse,
 } from '../lib/googleForm'
 import {
   ClipboardCheck, RefreshCw, ChevronRight, Users, MailCheck, TrendingUp,
-  CalendarClock, AlertTriangle, Info, ArrowRight,
+  CalendarClock, AlertTriangle, Info, ArrowRight, Rocket, PlayCircle, Trophy, BarChart3,
 } from 'lucide-react'
 import {
   ResponsiveContainer, Tooltip, XAxis, YAxis, CartesianGrid, ComposedChart, Bar, Line, BarChart,
@@ -20,14 +22,16 @@ export default function GoogleFormDashboard() {
   const navigate = useNavigate()
   const [responses, setResponses] = useState<FormResponse[]>([])
   const [records, setRecords] = useState<BranchQRecord[]>([])
+  const [pocStart, setPocStartState] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
+  const [showStartModal, setShowStartModal] = useState(false)
+  const [starting, setStarting] = useState(false)
 
   const load = async () => {
     let cust: any[] = []
     try { cust = await fetchCustomers() } catch { /* 오프라인 */ }
     let recs = await loadBranchqRecords()
-    // records에 사업자번호가 비어있으면 고객원장에서 보강
     if (cust && cust.length) {
       const byNum = new Map(cust.map((c) => [String(c.customer_number), c]))
       recs = recs.map((r) => ({ ...r, business_number: r.business_number || byNum.get(String(r.customer_number))?.business_number || '' }))
@@ -37,11 +41,21 @@ export default function GoogleFormDashboard() {
     }
     setRecords(recs)
     setResponses(await loadFormResponses())
+    setPocStartState(await getPocStart())
   }
 
   useEffect(() => { (async () => { await load(); setLoading(false) })() }, [])
 
   const handleRefresh = async () => { setRefreshing(true); await load(); setRefreshing(false) }
+
+  const confirmStart = async () => {
+    setStarting(true)
+    const today = new Date().toISOString().slice(0, 10)
+    await setPocStart(today)
+    setPocStartState(today)
+    setStarting(false)
+    setShowStartModal(false)
+  }
 
   // 발송 대상 (POC 고객) — 사업자번호를 매칭 키로 사용
   const targets = useMemo(() =>
@@ -49,8 +63,12 @@ export default function GoogleFormDashboard() {
       .filter((t) => t.biz || t.name), [records])
 
   const stats = useMemo(() => computeStats(responses, targets.length), [responses, targets.length])
-  const weekTrend = useMemo(() => participationByWeek(responses, targets.length, 8), [responses, targets.length])
+  const weekTrend = useMemo(() => participationTrendPoc(responses, targets.length, pocStart, 10), [responses, targets.length, pocStart])
   const weekdayDist = useMemo(() => byWeekday(responses), [responses])
+  const dists = useMemo(() => answerDistributions(responses), [responses])
+  const choiceDists = dists.filter((d) => d.isChoice)
+  const textDists = dists.filter((d) => !d.isChoice)
+  const pocWeek = currentPocWeek(pocStart)
 
   const thisWeek = getWeekKey(new Date().toISOString())
   const thisWeekResponderBiz = useMemo(() =>
@@ -90,6 +108,31 @@ export default function GoogleFormDashboard() {
       </div>
       <p className="text-sm text-gray-400 mb-5">브랜치Q 고객 대상 주간 설문(구글폼) 참여 현황입니다. 매주 발송되며 응답은 구글시트에 자동 누적됩니다.</p>
 
+      {/* POC 시작 배너 / 진행 상태 */}
+      {pocStart ? (
+        <div className="mb-5 rounded-xl border border-emerald-100 bg-emerald-50/60 px-5 py-3.5 flex items-center gap-3">
+          <span className="w-9 h-9 rounded-lg bg-emerald-600 grid place-items-center shrink-0"><Rocket size={18} className="text-white" /></span>
+          <div className="min-w-0">
+            <p className="text-sm font-bold text-emerald-800">POC 시범사업 진행 중 · {pocWeek}주차</p>
+            <p className="text-xs text-emerald-700/70">시작일 {pocStart} · 주차는 이 날짜를 1주차 기준으로 계산됩니다.</p>
+          </div>
+        </div>
+      ) : (
+        <div className="mb-5 rounded-xl border border-amber-200 bg-amber-50/70 px-5 py-4 flex items-center justify-between gap-3 flex-wrap">
+          <div className="flex items-center gap-3 min-w-0">
+            <span className="w-9 h-9 rounded-lg bg-amber-400 grid place-items-center shrink-0"><AlertTriangle size={18} className="text-white" /></span>
+            <div className="min-w-0">
+              <p className="text-sm font-bold text-amber-800">아직 POC 시범사업 시작 전입니다 (테스트 단계)</p>
+              <p className="text-xs text-amber-700/80">‘시작’을 누르면 그 날짜부터 1주차로 카운트됩니다. 실제 운영을 개시할 때 눌러주세요.</p>
+            </div>
+          </div>
+          <button onClick={() => setShowStartModal(true)}
+            className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-lg text-sm font-bold bg-emerald-600 text-white hover:bg-emerald-700 shadow-sm transition shrink-0">
+            <PlayCircle size={17} /> POC 시작
+          </button>
+        </div>
+      )}
+
       {/* 요약 카드 */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-5">
         {cards.map((c) => (
@@ -108,7 +151,7 @@ export default function GoogleFormDashboard() {
         <div className="lg:col-span-2 bg-white rounded-xl p-5 shadow-sm border border-gray-100">
           <div className="flex items-center justify-between mb-3">
             <h3 className="font-semibold text-gray-700 text-sm">주차별 참여 추이</h3>
-            <span className="text-xs text-gray-400">최근 8주 · 막대=응답 업체수, 선=참여율</span>
+            <span className="text-xs text-gray-400">{pocStart ? 'POC 주차 기준' : '최근 주(시작 전)'} · 막대=응답 업체수, 선=참여율</span>
           </div>
           <ResponsiveContainer width="100%" height={230}>
             <ComposedChart data={weekTrend} margin={{ top: 5, right: 8, left: -18, bottom: 0 }}>
@@ -136,6 +179,70 @@ export default function GoogleFormDashboard() {
             </BarChart>
           </ResponsiveContainer>
         </div>
+      </div>
+
+      {/* 문항별 응답 분석 */}
+      <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden mb-5">
+        <div className="px-5 py-3 border-b border-gray-100 bg-gray-50 flex items-center gap-2">
+          <BarChart3 size={15} className="text-gray-400" />
+          <h3 className="font-semibold text-gray-700 text-sm">문항별 응답 분석</h3>
+          <span className="text-xs text-gray-400">어떤 답변이 가장 많은지 한눈에</span>
+        </div>
+        {dists.length === 0 ? (
+          <p className="text-center py-12 text-gray-400 text-sm">아직 분석할 응답이 없습니다.</p>
+        ) : (
+          <div className="p-5 space-y-5">
+            {/* 선택형 문항 */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              {choiceDists.map((d) => {
+                const max = d.options[0]?.count || 1
+                return (
+                  <div key={d.question} className="rounded-xl border border-gray-100 p-4">
+                    <p className="text-sm font-semibold text-gray-800 mb-0.5 leading-snug">{d.question}</p>
+                    <p className="text-xs text-gray-400 mb-3">응답 {d.total}건</p>
+                    <div className="space-y-2">
+                      {d.options.map((o, i) => (
+                        <div key={o.answer}>
+                          <div className="flex items-center justify-between text-xs mb-1">
+                            <span className={`truncate ${i === 0 ? 'font-bold text-emerald-700' : 'text-gray-600'}`}>
+                              {i === 0 && <Trophy size={11} className="inline mr-1 -mt-0.5 text-amber-500" />}{o.answer}
+                            </span>
+                            <span className={`tabular-nums shrink-0 ml-2 ${i === 0 ? 'font-bold text-emerald-700' : 'text-gray-400'}`}>{o.count}건 · {o.pct}%</span>
+                          </div>
+                          <div className="w-full bg-gray-100 rounded-full h-2 overflow-hidden">
+                            <div className={i === 0 ? 'bg-emerald-500 h-full rounded-full' : 'bg-emerald-300 h-full rounded-full'} style={{ width: `${(o.count / max) * 100}%` }} />
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+
+            {/* 주관식 문항 */}
+            {textDists.length > 0 && (
+              <div className="space-y-3">
+                {textDists.map((d) => (
+                  <div key={d.question} className="rounded-xl border border-gray-100 p-4">
+                    <div className="flex items-center justify-between mb-2">
+                      <p className="text-sm font-semibold text-gray-800 leading-snug">{d.question}</p>
+                      <span className="text-xs text-gray-400 shrink-0 ml-2">주관식 · {d.total}건</span>
+                    </div>
+                    <div className="space-y-1.5">
+                      {d.samples.map((s, i) => (
+                        <p key={i} className="text-xs text-gray-600 bg-gray-50 rounded-lg px-3 py-2 line-clamp-2">“{s}”</p>
+                      ))}
+                    </div>
+                    <button onClick={() => navigate('/branchq/form/detail')} className="text-xs text-emerald-600 hover:text-emerald-700 mt-2 inline-flex items-center gap-0.5">
+                      전체 답변 보기 <ChevronRight size={12} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-5">
@@ -196,10 +303,39 @@ export default function GoogleFormDashboard() {
         <Info size={18} className="text-blue-500 shrink-0 mt-0.5" />
         <div className="text-sm text-blue-900/80 leading-relaxed">
           <p className="font-semibold text-blue-800 mb-0.5">구글폼 연동 방법</p>
-          구글폼 응답을 스프레드시트(<span className="font-mono text-xs bg-white px-1 py-0.5 rounded">form_responses</span> 탭)에 연결하면 이 대시보드에 자동 반영됩니다.
-          응답을 고객과 매칭하려면 폼에 <b>필수 문항 "사업자번호"</b>를 추가하세요. 현재는 {isDev ? '데모(샘플) 데이터' : '연결 대기'} 상태입니다.
+          구글폼 응답을 스프레드시트에 연결하면 이 대시보드에 자동 반영됩니다.
+          응답을 고객과 매칭하려면 폼에 <b>필수 문항 "사업자번호"</b>를 추가하세요. 현재는 {isDev ? '데모(샘플) 데이터' : '실시간 연동'} 상태입니다.
         </div>
       </div>
+
+      {/* POC 시작 확인 모달 */}
+      {showStartModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={() => !starting && setShowStartModal(false)}>
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-6" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center gap-2.5 mb-3">
+              <span className="w-10 h-10 rounded-full bg-emerald-100 grid place-items-center"><Rocket size={20} className="text-emerald-600" /></span>
+              <h3 className="text-lg font-bold text-gray-800">POC 시범사업 시작</h3>
+            </div>
+            <p className="text-sm text-gray-600 leading-relaxed mb-1">
+              해당 버튼 클릭 시 <b className="text-emerald-700">POC 시범사업이 시작</b>됩니다. 진행하시겠습니까?
+            </p>
+            <p className="text-xs text-gray-400 leading-relaxed mb-5">
+              오늘({new Date().toISOString().slice(0, 10)})이 <b>1주차</b> 기준일이 되며, 이후 주차가 자동 계산됩니다.
+              시작은 1회만 가능하고 버튼은 사라집니다. (잘못 눌렀을 경우 관리자에게 복구 요청 가능)
+            </p>
+            <div className="flex gap-2 justify-end">
+              <button onClick={() => setShowStartModal(false)} disabled={starting}
+                className="px-4 py-2 rounded-lg text-sm font-medium border border-gray-200 text-gray-600 hover:bg-gray-50 transition">
+                취소
+              </button>
+              <button onClick={confirmStart} disabled={starting}
+                className="px-4 py-2 rounded-lg text-sm font-bold bg-emerald-600 text-white hover:bg-emerald-700 transition inline-flex items-center gap-1.5">
+                {starting ? <RefreshCw size={15} className="animate-spin" /> : <PlayCircle size={15} />} 시작하기
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
