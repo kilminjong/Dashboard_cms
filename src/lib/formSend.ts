@@ -79,6 +79,26 @@ export async function syncRecipients(recipients: Recipient[]): Promise<number> {
   return data.count || 0
 }
 
+export interface SendLogRow {
+  when: string     // 발송일시
+  kind: string     // 자동 / 수동 / 테스트
+  name: string     // 업체명
+  email: string
+  result: string   // 성공 / 실패
+  reason: string   // 실패 사유
+}
+
+// 발송 이력 조회 (최신순)
+export async function loadSendLog(): Promise<SendLogRow[]> {
+  const res = await fetch(EDGE_FUNCTION_URL, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action: 'readSendLog' }),
+  })
+  const data = await res.json()
+  if (data.error && !Array.isArray(data.log)) return []
+  return data.log || []
+}
+
 // 수동 발송 (Apps Script 웹앱 프록시)
 // templateKey: 'auto' | 'remind', testEmail 지정 시 그 주소로만 테스트 발송
 export async function sendReminder(opts: {
