@@ -42,10 +42,14 @@ const navItems = [
     label: '브랜치Q 고객관리', icon: Rocket, children: [
       { to: '/branchq', label: 'POC 대상고객' },
       { to: '/branchq/status', label: 'POC 진행 현황' },
-      { to: '/branchq/form', label: '구글폼 대시보드' },
-      { to: '/branchq/form/detail', label: '└ 상세관리' },
-      { to: '/branchq/form/send', label: '└ 설문 발송 관리' },
-      { to: '/branchq/form/log', label: '└ 발송 이력' },
+      {
+        label: '구글폼 관리', children: [
+          { to: '/branchq/form', label: '구글폼 대시보드' },
+          { to: '/branchq/form/detail', label: '상세관리' },
+          { to: '/branchq/form/send', label: '설문 발송 관리' },
+          { to: '/branchq/form/log', label: '발송 이력' },
+        ],
+      },
       { to: '/branchq/notes', label: '안내·문의 현황' },
       { to: '/branchq/voc', label: 'VOC 확인' },
       { to: '/branchq/guides', label: '고객 안내 메뉴얼' },
@@ -76,6 +80,10 @@ export default function Layout() {
   const [expandedMenu, setExpandedMenu] = useState<string | null>(
     location.pathname.startsWith('/customers') ? '고객정보관리' : (location.pathname.startsWith('/todo') || location.pathname.startsWith('/renewals') || location.pathname.startsWith('/connections')) ? '업무 관리' : location.pathname.startsWith('/branchq') ? '브랜치Q 고객관리' : (location.pathname.startsWith('/reports') || location.pathname.startsWith('/kpi')) ? '보고서' : null
   )
+  // 2뎁스 하위그룹(3뎁스 보유) 펼침 상태 — 예: '구글폼 관리'
+  const [expandedSub, setExpandedSub] = useState<string | null>(
+    location.pathname.startsWith('/branchq/form') ? '구글폼 관리' : null
+  )
   useNotification()
   useAutoBackup()
 
@@ -87,10 +95,14 @@ export default function Layout() {
   const toggleSubmenu = (label: string) => {
     setExpandedMenu(expandedMenu === label ? null : label)
   }
+  const toggleSub = (label: string) => {
+    setExpandedSub(expandedSub === label ? null : label)
+  }
 
-  const isMenuActive = (item: any) => {
-    if (item.to) return location.pathname === item.to
-    if (item.children) return item.children.some((c: any) => location.pathname === c.to || location.pathname.startsWith(c.to + '/'))
+  // 재귀적으로 하위 경로가 현재 활성인지 판단 (2·3뎁스 모두)
+  const isMenuActive = (item: any): boolean => {
+    if (item.to) return location.pathname === item.to || location.pathname.startsWith(item.to + '/')
+    if (item.children) return item.children.some((c: any) => isMenuActive(c))
     return false
   }
 
@@ -118,7 +130,7 @@ export default function Layout() {
         </div>
 
         {/* 메뉴 */}
-        <nav className="px-3 py-4 space-y-0.5 flex-1 overflow-y-auto">
+        <nav className="px-3 py-4 space-y-0.5 flex-1 overflow-y-auto nav-scroll">
           {navItems.map((item) => {
             if (item.children) {
               const isExpanded = expandedMenu === item.label
@@ -147,6 +159,49 @@ export default function Layout() {
                             </div>
                           )
                         }
+
+                        // 3뎁스 보유 하위그룹 (2뎁스 클릭 시 3뎁스 펼침)
+                        if (child.children) {
+                          const subOpen = expandedSub === child.label
+                          const subActive = isMenuActive(child)
+                          return (
+                            <div key={child.label}>
+                              <button
+                                onClick={() => toggleSub(child.label)}
+                                className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-xs font-medium transition-colors ${
+                                  subActive ? 'bg-slate-700/40 text-white' : 'text-slate-400 hover:bg-slate-700/40 hover:text-white'
+                                }`}
+                              >
+                                <div className="flex items-center gap-2.5">
+                                  <div className="w-1.5 h-1.5 rounded-full bg-current opacity-50"></div>
+                                  {child.label}
+                                </div>
+                                <ChevronDown size={13} className={`transition-transform ${subOpen ? 'rotate-180' : ''}`} />
+                              </button>
+                              {subOpen && (
+                                <div className="ml-3 mt-0.5 space-y-0.5 border-l border-slate-700/50 pl-2">
+                                  {child.children.map((sub: any) => (
+                                    <NavLink
+                                      key={sub.to}
+                                      to={sub.to!}
+                                      end
+                                      onClick={() => setSidebarOpen(false)}
+                                      className={({ isActive }) =>
+                                        `flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                                          isActive ? 'bg-emerald-600 text-white shadow-sm' : 'text-slate-400 hover:bg-slate-700/40 hover:text-white'
+                                        }`
+                                      }
+                                    >
+                                      <div className="w-1 h-1 rounded-full bg-current opacity-40"></div>
+                                      {sub.label}
+                                    </NavLink>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          )
+                        }
+
                         return (
                           <NavLink
                             key={child.to}
