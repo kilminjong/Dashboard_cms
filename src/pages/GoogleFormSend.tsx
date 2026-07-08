@@ -35,6 +35,7 @@ export default function GoogleFormSend() {
   const [savingConfig, setSavingConfig] = useState(false)
   const [sending, setSending] = useState(false)
   const [testMode, setTestMode] = useState(true)
+  const [testEmailInput, setTestEmailInput] = useState('')
   const [showSendModal, setShowSendModal] = useState(false)
   const [sendResult, setSendResult] = useState<{ sent: number; failed: number; test: boolean } | null>(null)
   const [msg, setMsg] = useState<{ type: 'ok' | 'err'; text: string } | null>(null)
@@ -77,6 +78,8 @@ export default function GoogleFormSend() {
   }
 
   useEffect(() => { (async () => { await load(); setLoading(false) })() }, [])
+  // 테스트 수신 이메일 기본값 = 로그인 이메일 (수정 가능)
+  useEffect(() => { if (myEmail && !testEmailInput) setTestEmailInput(myEmail) }, [myEmail]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const flash = (type: 'ok' | 'err', text: string) => { setMsg({ type, text }); setTimeout(() => setMsg(null), 5000) }
 
@@ -85,10 +88,14 @@ export default function GoogleFormSend() {
     setSavingEmails(true)
     try {
       let ledgerUpdated = 0
+      let failed = 0
+      let lastErr = ''
       for (const r of rows) {
         const newEmail = (emailMap[r.key] || '').trim()
-        if (newEmail !== (r.email || '').trim() && r.customer) {
-          try { await updateCustomerEmailInSheet(r.customer, newEmail); ledgerUpdated++ } catch { /* 개별 실패 무시 */ }
+        if (newEmail !== (r.email || '').trim()) {
+          if (!r.customer || r.customer._rowIndex == null) { failed++; lastErr = `${r.name}: 고객원장에서 행을 찾지 못함`; continue }
+          try { await updateCustomerEmailInSheet(r.customer, newEmail); ledgerUpdated++ }
+          catch (err: any) { failed++; lastErr = `${r.name}: ${err.message || err}` }
         }
       }
       const recipients: Recipient[] = rows
@@ -97,7 +104,11 @@ export default function GoogleFormSend() {
       const synced = await syncRecipients(recipients)
       // 로컬 반영
       setRows((prev) => prev.map((r) => ({ ...r, email: (emailMap[r.key] || '').trim() })))
-      flash('ok', `저장 완료 · 고객원장 ${ledgerUpdated}건 반영, 발송대상 ${synced}건 동기화`)
+      if (failed > 0) {
+        flash('err', `일부 저장 실패 · 고객원장 ${ledgerUpdated}건 반영, ${failed}건 실패 (${lastErr})`)
+      } else {
+        flash('ok', `저장 완료 · 고객원장 ${ledgerUpdated}건 반영, 발송대상 ${synced}건 동기화`)
+      }
     } catch (e: any) {
       flash('err', `저장 실패: ${e.message || e}`)
     } finally {
@@ -142,7 +153,7 @@ export default function GoogleFormSend() {
   // [발송] 클릭 → 검증 후 확인 모달 오픈
   const openSend = () => {
     if (sendRecipients.length === 0) { flash('err', '이메일이 입력된 대상이 없습니다. 고객을 체크하고 이메일을 확인해주세요.'); return }
-    if (testMode && !myEmail) { flash('err', '테스트 받을 내 로그인 이메일을 확인할 수 없습니다. 로그인 상태를 확인해주세요.'); return }
+    if (testMode && !testEmailInput.trim()) { flash('err', '테스트 받을 이메일을 입력해주세요.'); return }
     setShowSendModal(true)
   }
 
@@ -151,7 +162,7 @@ export default function GoogleFormSend() {
     setShowSendModal(false)
     setSending(true)
     try {
-      const res = await sendReminder({ templateKey: 'remind', recipients: sendRecipients, testEmail: testMode ? myEmail : undefined })
+      const res = await sendReminder({ templateKey: 'remind', recipients: sendRecipients, testEmail: testMode ? testEmailInput.trim() : undefined })
       setSendResult({ sent: res.sent, failed: res.failed, test: testMode })
     } catch (e: any) {
       flash('err', `발송 실패: ${e.message || e}`)
@@ -268,9 +279,14 @@ export default function GoogleFormSend() {
           <button onClick={clearSel} className="text-xs px-2.5 py-1 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50">해제</button>
           <label className="ml-auto inline-flex items-center gap-1.5 text-xs text-gray-600 cursor-pointer select-none">
             <input type="checkbox" checked={testMode} onChange={(e) => setTestMode(e.target.checked)} className="accent-emerald-600" />
-            테스트 발송(내 메일로만)
+            테스트 발송
           </label>
-          <button onClick={openSend} disabled={sending} className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-bold bg-emerald-600 text-white hover:bg-emerald-700 transition disabled:opacity-50">
+          {testMode && (
+            <input value={testEmailInput} onChange={(e) => setTestEmailInput(e.target.value)}
+              placeholder="테스트 받을 이메일"
+              className="w-52 px-2.5 py-1.5 text-xs rounded-lg border border-blue-200 bg-blue-50/40 focus:outline-none focus:ring-2 focus:ring-blue-500/30" />
+          )}
+          <button onClick={openSend} disabled={sending} className={`inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-bold text-white transition disabled:opacity-50 ${testMode ? 'bg-blue-600 hover:bg-blue-700' : 'bg-emerald-600 hover:bg-emerald-700'}`}>
             {sending ? <RefreshCw size={13} className="animate-spin" /> : <Send size={13} />} {testMode ? '테스트 발송' : '리마인드 발송'}
           </button>
         </div>
@@ -325,8 +341,8 @@ export default function GoogleFormSend() {
 
             {testMode ? (
               <p className="text-sm text-gray-600 leading-relaxed mb-1">
-                <b className="text-blue-700">테스트 미리보기</b>를 <b>내 메일({myEmail})</b>로 발송합니다.
-                고객에게는 전송되지 않습니다.
+                선택한 <b className="text-blue-700">{sendRecipients.length}개 업체</b>분의 미리보기를 <b>{testEmailInput}</b>로 발송합니다.
+                실제 고객에게는 전송되지 않습니다.
               </p>
             ) : (
               <p className="text-sm text-gray-600 leading-relaxed mb-1">
@@ -363,7 +379,7 @@ export default function GoogleFormSend() {
             <h3 className="text-lg font-bold text-gray-800 mb-1">발송 완료되었습니다</h3>
             <p className="text-sm text-gray-600 mb-1">
               {sendResult.test
-                ? <>테스트 미리보기를 <b>내 메일({myEmail})</b>로 보냈습니다.</>
+                ? <>테스트 미리보기를 <b>{testEmailInput}</b>로 보냈습니다.</>
                 : <>선택한 업체에 리마인드 메일을 발송했습니다.</>}
             </p>
             <p className="text-sm font-medium text-gray-700 mb-5">
