@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { fetchCustomers, updateBranchqInSheet } from '../lib/googleSheets'
-import { loadBranchqRecords, upsertBranchqRecord, removeBranchqRecord, deleteVocByCustomer, statusTone, BUILD_STATUSES, DEV_MOCK_CUSTOMERS, type BranchQRecord } from '../lib/branchq'
+import { loadBranchqRecords, upsertBranchqRecord, removeBranchqRecord, deleteVocByCustomer, statusTone, BUILD_STATUSES, POC_MANAGERS, DEV_MOCK_CUSTOMERS, type BranchQRecord } from '../lib/branchq'
 import { Search, X, Plus, Trash2, Rocket, RefreshCw, ChevronRight, AlertTriangle, CheckCircle2 } from 'lucide-react'
 
 interface Row {
@@ -9,6 +9,7 @@ interface Row {
   customer_name: string
   business_number: string
   management_code: string
+  poc_manager: string
   build_status: string
   build_date: string
   rec: BranchQRecord
@@ -22,6 +23,7 @@ export default function BranchQList() {
   const [records, setRecords] = useState<BranchQRecord[]>([])
   const [loading, setLoading] = useState(true)
   const [statusFilter, setStatusFilter] = useState('전체')
+  const [managerFilter, setManagerFilter] = useState('전체')
   const [search, setSearch] = useState('')
   const [showAdd, setShowAdd] = useState(false)
   const [addSearch, setAddSearch] = useState('')
@@ -53,6 +55,7 @@ export default function BranchQList() {
       customer_name: rec.customer_name || m.customer_name || '-',
       business_number: rec.business_number || m.business_number || '-',
       management_code: rec.management_code || m.management_code || '-',
+      poc_manager: rec.poc_manager || '',
       build_status: rec.build_status || m.branchq_status || '구축대기',
       build_date: rec.build_date || m.branchq_date || '',
       rec,
@@ -63,8 +66,9 @@ export default function BranchQList() {
     const q = search.trim().toLowerCase()
     return rows
       .filter((r) => statusFilter === '전체' || r.build_status === statusFilter)
+      .filter((r) => managerFilter === '전체' || (managerFilter === '미배정' ? !r.poc_manager : r.poc_manager === managerFilter))
       .filter((r) => !q || r.customer_name.toLowerCase().includes(q) || String(r.customer_number).includes(q) || String(r.business_number).includes(q))
-  }, [rows, statusFilter, search])
+  }, [rows, statusFilter, managerFilter, search])
 
   const counts = useMemo(() => {
     const c: Record<string, number> = { 전체: rows.length }
@@ -126,6 +130,18 @@ export default function BranchQList() {
     } finally { setRemoving(false) }
   }
 
+  // 목록에서 POC 담당자 바로 배정 (Supabase branchq_poc)
+  const [savingMgr, setSavingMgr] = useState<string | null>(null)
+  const changeManager = async (row: Row, newManager: string) => {
+    if (newManager === row.poc_manager) return
+    setSavingMgr(row.customer_number)
+    try {
+      await upsertBranchqRecord({ ...row.rec, customer_number: row.customer_number, poc_manager: newManager })
+      await loadBranchqRecords().then(setRecords)
+      showToast(newManager ? `담당자: ${newManager}` : '담당자 배정 해제')
+    } finally { setSavingMgr(null) }
+  }
+
   // 목록에서 구축여부 바로 수정 (상세 진입 없이) → Supabase + 구글시트 동시 반영
   const [savingNo, setSavingNo] = useState<string | null>(null)
   const changeStatus = async (row: Row, newStatus: string) => {
@@ -171,11 +187,19 @@ export default function BranchQList() {
             {s} <span className={statusFilter === s ? 'text-emerald-100' : 'text-gray-400'}>{counts[s] ?? 0}</span>
           </button>
         ))}
-        <div className="relative ml-auto">
-          <Search size={15} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
-          <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="고객명·번호 검색"
-            className="pl-8 pr-8 py-1.5 border border-gray-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-emerald-500 w-48" />
-          {search && <button onClick={() => setSearch('')} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-300 hover:text-gray-500"><X size={13} /></button>}
+        <div className="ml-auto flex items-center gap-2">
+          <select value={managerFilter} onChange={(e) => setManagerFilter(e.target.value)}
+            className="py-1.5 pl-2.5 pr-7 border border-gray-300 rounded-lg text-xs font-semibold text-gray-600 outline-none focus:ring-2 focus:ring-emerald-500 cursor-pointer">
+            <option value="전체">담당자 전체</option>
+            <option value="미배정">미배정</option>
+            {POC_MANAGERS.map((m) => <option key={m} value={m}>{m}</option>)}
+          </select>
+          <div className="relative">
+            <Search size={15} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
+            <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="고객명·번호 검색"
+              className="pl-8 pr-8 py-1.5 border border-gray-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-emerald-500 w-48" />
+            {search && <button onClick={() => setSearch('')} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-300 hover:text-gray-500"><X size={13} /></button>}
+          </div>
         </div>
       </div>
 
@@ -189,6 +213,7 @@ export default function BranchQList() {
                 <th className="text-left px-4 py-3 text-xs font-bold">고객명</th>
                 <th className="text-left px-4 py-3 text-xs font-bold">고객번호</th>
                 <th className="text-left px-4 py-3 text-xs font-bold">사업자번호</th>
+                <th className="text-center px-4 py-3 text-xs font-bold">POC 담당자</th>
                 <th className="text-center px-4 py-3 text-xs font-bold">브랜치Q 구축여부</th>
                 <th className="text-center px-4 py-3 text-xs font-bold">브랜치Q 구축일자</th>
                 <th className="px-2 py-3 w-10"></th>
@@ -196,7 +221,7 @@ export default function BranchQList() {
             </thead>
             <tbody className="divide-y divide-gray-50">
               {filtered.length === 0 ? (
-                <tr><td colSpan={7} className="text-center py-14 text-gray-400 text-sm">
+                <tr><td colSpan={8} className="text-center py-14 text-gray-400 text-sm">
                   {rows.length === 0 ? '아직 POC 대상고객이 없습니다. ‘고객 추가’로 선정하세요.' : '해당 상태의 고객이 없습니다.'}
                 </td></tr>
               ) : filtered.map((r, i) => (
@@ -208,6 +233,17 @@ export default function BranchQList() {
                   </td>
                   <td className="px-4 py-3 text-gray-600 tabular-nums">{r.customer_number}</td>
                   <td className="px-4 py-3 text-gray-600 tabular-nums">{r.business_number}</td>
+                  <td className="text-center px-4 py-3" onClick={(e) => e.stopPropagation()}>
+                    <div className="inline-flex items-center gap-1.5">
+                      <select value={r.poc_manager} disabled={savingMgr === r.customer_number} onChange={(e) => changeManager(r, e.target.value)}
+                        className={`appearance-none cursor-pointer text-center pl-3 pr-6 py-1 rounded-lg text-xs font-semibold border outline-none focus:ring-2 focus:ring-emerald-400 bg-[length:12px] bg-[right_0.4rem_center] bg-no-repeat ${r.poc_manager ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-gray-200 bg-white text-gray-400'}`}
+                        style={{ backgroundImage: "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23888' stroke-width='3'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E\")" }}>
+                        <option value="">미배정</option>
+                        {POC_MANAGERS.map((m) => <option key={m} value={m}>{m}</option>)}
+                      </select>
+                      {savingMgr === r.customer_number && <RefreshCw size={12} className="animate-spin text-gray-400" />}
+                    </div>
+                  </td>
                   <td className="text-center px-4 py-3" onClick={(e) => e.stopPropagation()}>
                     <div className="inline-flex items-center gap-1.5">
                       <select value={r.build_status} disabled={savingNo === r.customer_number} onChange={(e) => changeStatus(r, e.target.value)}
