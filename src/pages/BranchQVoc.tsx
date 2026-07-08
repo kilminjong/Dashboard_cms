@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { loadAllVoc, deleteVoc, vocTone, VOC_TYPES, type BranchQVoc } from '../lib/branchq'
+import { loadAllVoc, deleteVoc, vocTone, VOC_TYPES, syncSurveyToVoc, type BranchQVoc } from '../lib/branchq'
+import { loadFormResponses } from '../lib/googleForm'
 import { MessageSquareText, RefreshCw, Search, FileDown, Download, ChevronRight, Trash2, AlertTriangle } from 'lucide-react'
 import * as XLSX from 'xlsx-js-style'
 import html2canvas from 'html2canvas-pro'
@@ -21,7 +22,17 @@ export default function BranchQVoc() {
   const tableRef = useRef<HTMLDivElement>(null)
 
   const reload = async () => setVoc(await loadAllVoc())
-  useEffect(() => { (async () => { await reload(); setLoading(false) })() }, [])
+  useEffect(() => {
+    (async () => {
+      // 구글폼 주관식 답변을 VOC로 자동 동기화 (중복은 자동 건너뜀) 후 목록 로드
+      try {
+        const responses = await loadFormResponses()
+        await syncSurveyToVoc(responses)
+      } catch { /* 동기화 실패해도 VOC 조회는 진행 */ }
+      await reload()
+      setLoading(false)
+    })()
+  }, [])
 
   const confirmDelete = async () => {
     if (!deleteTarget) return
