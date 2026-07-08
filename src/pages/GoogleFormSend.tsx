@@ -36,6 +36,7 @@ export default function GoogleFormSend() {
   const [sending, setSending] = useState(false)
   const [testMode, setTestMode] = useState(true)
   const [showSendModal, setShowSendModal] = useState(false)
+  const [sendResult, setSendResult] = useState<{ sent: number; failed: number; test: boolean } | null>(null)
   const [msg, setMsg] = useState<{ type: 'ok' | 'err'; text: string } | null>(null)
 
   const load = async () => {
@@ -151,7 +152,7 @@ export default function GoogleFormSend() {
     setSending(true)
     try {
       const res = await sendReminder({ templateKey: 'remind', recipients: sendRecipients, testEmail: testMode ? myEmail : undefined })
-      flash('ok', `발송 완료 · 성공 ${res.sent}건${res.failed ? `, 실패 ${res.failed}건` : ''}`)
+      setSendResult({ sent: res.sent, failed: res.failed, test: testMode })
     } catch (e: any) {
       flash('err', `발송 실패: ${e.message || e}`)
     } finally {
@@ -348,6 +349,30 @@ export default function GoogleFormSend() {
                 <Send size={15} /> {testMode ? '테스트 발송' : '발송하기'}
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* 발송 완료 알림 모달 */}
+      {sendResult && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={() => setSendResult(null)}>
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm p-6 text-center" onClick={(e) => e.stopPropagation()}>
+            <span className="w-14 h-14 rounded-full bg-emerald-100 grid place-items-center mx-auto mb-3">
+              <CheckCircle2 size={30} className="text-emerald-600" />
+            </span>
+            <h3 className="text-lg font-bold text-gray-800 mb-1">발송 완료되었습니다</h3>
+            <p className="text-sm text-gray-600 mb-1">
+              {sendResult.test
+                ? <>테스트 미리보기를 <b>내 메일({myEmail})</b>로 보냈습니다.</>
+                : <>선택한 업체에 리마인드 메일을 발송했습니다.</>}
+            </p>
+            <p className="text-sm font-medium text-gray-700 mb-5">
+              성공 <b className="text-emerald-600">{sendResult.sent}</b>건{sendResult.failed ? <> · 실패 <b className="text-red-500">{sendResult.failed}</b>건</> : ''}
+            </p>
+            <button onClick={() => setSendResult(null)}
+              className="w-full px-4 py-2.5 rounded-lg text-sm font-bold bg-emerald-600 text-white hover:bg-emerald-700 transition">
+              확인
+            </button>
           </div>
         </div>
       )}
