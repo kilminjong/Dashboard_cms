@@ -3,11 +3,15 @@
 // - 앱에서 입력/관리하는 값(POC 선정 여부, 상태 override, 컨택일, VOC, 메모)은
 //   Supabase 테이블 `branchq_poc`에 저장. 실패 시(오프라인/로컬) localStorage로 자동 폴백.
 import { supabase } from './supabase'
+import { answerDistributions, formatKST, type FormResponse } from './googleForm'
 
 export const BUILD_STATUSES = ['구축완료', '구축예정', '구축보류', '구축대기'] as const
 export type BuildStatus = (typeof BUILD_STATUSES)[number]
 
-export const VOC_TYPES = ['문의', '불만', '요청', '칭찬', '기타'] as const
+// POC 담당자 (고객원장 담당자와 별개로 POC 전용 배정)
+export const POC_MANAGERS = ['길민종', '맹국성', '전준수', '이수현', '임인지', '이성환', '하성춘'] as const
+
+export const VOC_TYPES = ['설문', '문의', '불만', '요청', '칭찬', '기타'] as const
 export type VocType = (typeof VOC_TYPES)[number]
 
 export interface BranchQVoc {
@@ -15,9 +19,10 @@ export interface BranchQVoc {
   customer_number: string
   customer_name?: string
   voc_date: string      // YYYY-MM-DD
-  voc_type: string      // 문의/불만/요청/칭찬/기타
+  voc_type: string      // 설문/문의/불만/요청/칭찬/기타
   content: string
   author?: string       // 작성자 (이름)
+  source_key?: string   // 자동 등록(설문 등) 중복 방지 키
   created_at?: string
 }
 
@@ -26,6 +31,7 @@ export interface BranchQRecord {
   management_code?: string
   customer_name?: string
   business_number?: string
+  poc_manager?: string      // POC 담당자 (고객원장 담당자와 별개)
   build_status?: string     // 구축여부 (앱 관리값; 없으면 시트값 사용)
   build_date?: string       // 구축일자 (앱 관리값; 없으면 시트값 사용)
   contact_date?: string     // 최근 컨택일
@@ -180,13 +186,64 @@ export async function loadVocByCustomer(customerNumber: string): Promise<BranchQ
 export async function addVoc(voc: Omit<BranchQVoc, 'id'>): Promise<void> {
   const payload: BranchQVoc = { ...voc, id: genId(), created_at: new Date().toISOString() }
   try {
-    const { error } = await supabase.from('branchq_voc').insert({ customer_number: voc.customer_number, customer_name: voc.customer_name, voc_date: voc.voc_date, voc_type: voc.voc_type, content: voc.content, author: voc.author })
+    const insertObj: any = { customer_number: voc.customer_number, customer_name: voc.customer_name, voc_date: voc.voc_date, voc_type: voc.voc_type, content: voc.content, author: voc.author }
+    if (voc.source_key) insertObj.source_key = voc.source_key // 자동등록 중복방지 (컬럼 없으면 아래 catch로 폴백)
+    const { error } = await supabase.from('branchq_voc').insert(insertObj)
     if (!error) return
     throw error
   } catch { /* 폴백 */ }
   const local = vocLsLoad()
   local.push(payload)
   vocLsSaveAll(local)
+}
+
+/**
+ * 구글폼 주관식 답변을 해당 고객 VOC에 자동 등록 (idempotent).
+ * - 선택형 문항은 제외, 주관식(자유서술) 답변만 대상
+ * - source_key로 중복 방지 → 이미 등록된 답변은 건너뜀
+ * - 신규 등록 건수 반환
+ */
+export async function syncSurveyToVoc(
+  responses: FormResponse[],
+  opts?: { author?: string },
+): Promise<number> {
+  if (!responses || responses.length === 0) return 0
+  // 주관식 문항 판별 (전체 응답 기준)
+  const textQuestions = new Set(
+    answerDistributions(responses).filter((d) => !d.isChoice).map((d) => d.question),
+  )
+  if (textQuestions.size === 0) return 0
+
+  const existing = await loadAllVoc()
+  const seen = new Set(existing.map((v) => v.source_key).filter(Boolean) as string[])
+  // localStorage 폴백에 저장된 건도 dedup에 포함 (source_key 컬럼 미적용 상황 안전장치)
+  vocLsLoad().forEach((v) => { if (v.source_key) seen.add(v.source_key) })
+
+  const toAdd: Omit<BranchQVoc, 'id'>[] = []
+  for (const r of responses) {
+    const number = r.customer_number
+    if (!number) continue
+    const d = formatKST(r.submitted_at)
+    for (const a of r.answers) {
+      if (!textQuestions.has(a.question)) continue
+      if (!a.answer || !a.answer.trim()) continue
+      const key = `form:${r.id}:${a.question}`
+      if (seen.has(key)) continue
+      seen.add(key)
+      toAdd.push({
+        customer_number: String(number),
+        customer_name: r.customer_name || '',
+        voc_date: d.date,
+        voc_type: '설문',
+        content: `[설문 · ${a.question}]\n${a.answer.trim()}`,
+        author: opts?.author || '구글폼(자동)',
+        source_key: key,
+      })
+    }
+  }
+  if (toAdd.length === 0) return 0
+  await Promise.all(toAdd.map((v) => addVoc(v)))
+  return toAdd.length
 }
 
 /** VOC 삭제 */
@@ -212,6 +269,7 @@ export async function deleteVocByCustomer(customerNumber: string): Promise<void>
 /** VOC 유형 뱃지 색상 */
 export function vocTone(type?: string): string {
   switch (type) {
+    case '설문': return 'bg-violet-100 text-violet-700'
     case '문의': return 'bg-blue-100 text-blue-700'
     case '불만': return 'bg-red-100 text-red-700'
     case '요청': return 'bg-amber-100 text-amber-700'
