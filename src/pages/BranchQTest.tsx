@@ -10,6 +10,16 @@ import {
 
 interface Row extends TestQuestion, TestItemState {}
 
+// 결과(정합성) 고정 선택지 (기타는 직접입력)
+const RESULT_MATCH = '데이터일치'
+const RESULT_MISMATCH = '데이터불일치'
+function resultTone(mode: string): string {
+  if (mode === RESULT_MATCH) return 'border-emerald-200 bg-emerald-50 text-emerald-700'
+  if (mode === RESULT_MISMATCH) return 'border-red-200 bg-red-50 text-red-700'
+  if (mode === '기타') return 'border-slate-200 bg-slate-50 text-slate-600'
+  return 'border-gray-200 bg-white text-gray-400'
+}
+
 export default function BranchQTest() {
   const [questions, setQuestions] = useState<TestQuestion[]>([])
   const [items, setItems] = useState<Map<string, TestItemState>>(new Map())
@@ -19,6 +29,7 @@ export default function BranchQTest() {
   const [statusFilter, setStatusFilter] = useState('전체')
   const [search, setSearch] = useState('')
   const [selected, setSelected] = useState<Set<string>>(new Set())
+  const [etcSeqs, setEtcSeqs] = useState<Set<string>>(new Set()) // 결과=기타(직접입력) 선택 상태
   const [bulkManager, setBulkManager] = useState('')
   const [savingSeq, setSavingSeq] = useState<string | null>(null)
   const [toast, setToast] = useState('')
@@ -56,6 +67,30 @@ export default function BranchQTest() {
     try { await upsertTestItem(next) } finally { setSavingSeq(null) }
   }
 
+  // 결과(정합성) 현재 모드 판별: 일치 / 불일치 / 기타 / 미선택('')
+  const resultMode = (r: Row): string => {
+    if (r.result === RESULT_MATCH) return RESULT_MATCH
+    if (r.result === RESULT_MISMATCH) return RESULT_MISMATCH
+    if (etcSeqs.has(r.seq) || (r.result && r.result.trim())) return '기타'
+    return ''
+  }
+  const onResultSelect = (r: Row, val: string) => {
+    if (val === '기타') {
+      setEtcSeqs((prev) => new Set(prev).add(r.seq))
+      if (r.result === RESULT_MATCH || r.result === RESULT_MISMATCH) patch(r.seq, 'result', '')
+    } else {
+      setEtcSeqs((prev) => { const n = new Set(prev); n.delete(r.seq); return n })
+      patch(r.seq, 'result', val) // '데이터일치' | '데이터불일치' | ''(미선택)
+    }
+  }
+
+  const summary = useMemo(() => ({
+    total: rows.length,
+    done: rows.filter((r) => r.status === '완료').length,
+    inProgress: rows.filter((r) => r.status === '진행중').length,
+    mismatch: rows.filter((r) => r.result === RESULT_MISMATCH).length,
+  }), [rows])
+
   const toggle = (seq: string) => setSelected((prev) => { const n = new Set(prev); n.has(seq) ? n.delete(seq) : n.add(seq); return n })
   const allVisibleSelected = filtered.length > 0 && filtered.every((r) => selected.has(r.seq))
   const toggleAll = () => setSelected(allVisibleSelected ? new Set() : new Set(filtered.map((r) => r.seq)))
@@ -84,6 +119,21 @@ export default function BranchQTest() {
         </button>
       </div>
       <p className="text-sm text-gray-400 mb-4">구글시트 ‘테스트항목’ 탭의 점검 항목을 담당자별로 배정하고, 데이터 정합성 테스트 진행·결과·신고를 관리합니다.</p>
+
+      {/* 진행 요약 */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
+        {[
+          { label: '전체 항목', value: summary.total, tone: 'text-slate-700', sub: '' },
+          { label: '완료', value: summary.done, tone: 'text-emerald-600', sub: summary.total ? `${Math.round((summary.done / summary.total) * 100)}%` : '' },
+          { label: '진행중', value: summary.inProgress, tone: 'text-blue-600', sub: '' },
+          { label: '데이터불일치', value: summary.mismatch, tone: 'text-red-500', sub: summary.mismatch ? '신고 확인' : '' },
+        ].map((c) => (
+          <div key={c.label} className="bg-white rounded-xl p-3.5 shadow-sm border border-gray-100">
+            <p className="text-xs text-gray-500 mb-0.5">{c.label}</p>
+            <p className={`text-2xl font-bold ${c.tone}`}>{c.value}<span className="text-xs font-normal text-gray-400 ml-1">{c.sub}</span></p>
+          </div>
+        ))}
+      </div>
 
       {/* 담당자 필터 (본인 것만 보기) */}
       <div className="flex items-center gap-1.5 flex-wrap mb-3">
@@ -145,8 +195,8 @@ export default function BranchQTest() {
                 <th className="text-left px-4 py-3 text-xs font-bold min-w-[240px]">테스트 항목</th>
                 <th className="text-center px-4 py-3 text-xs font-bold w-32">담당자</th>
                 <th className="text-center px-4 py-3 text-xs font-bold w-28">테스트 진행여부</th>
-                <th className="text-left px-4 py-3 text-xs font-bold min-w-[180px]">결과(정합성)</th>
-                <th className="text-left px-4 py-3 text-xs font-bold min-w-[160px]">신고 내용</th>
+                <th className="text-left px-4 py-3 text-xs font-bold min-w-[190px]">결과(정합성)</th>
+                <th className="text-left px-4 py-3 text-xs font-bold min-w-[170px]">신고내용(신고했을경우)</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-50">
@@ -155,7 +205,7 @@ export default function BranchQTest() {
                   {rows.length === 0 ? "구글시트 ‘테스트항목’ 탭에 항목을 입력해주세요 (순번·테스트항목)." : '조건에 맞는 항목이 없습니다.'}
                 </td></tr>
               ) : filtered.map((r) => (
-                <tr key={r.seq} className={`transition ${selected.has(r.seq) ? 'bg-emerald-50/40' : 'hover:bg-gray-50/60'}`}>
+                <tr key={r.seq} className={`transition ${selected.has(r.seq) ? 'bg-emerald-50/40' : r.result === RESULT_MISMATCH ? 'bg-red-50/40 hover:bg-red-50/60' : 'hover:bg-gray-50/60'}`}>
                   <td className="px-3 py-2.5 text-center">
                     <button onClick={() => toggle(r.seq)}>
                       {selected.has(r.seq) ? <CheckCircle2 size={17} className="text-emerald-500" /> : <Circle size={17} className="text-gray-300" />}
@@ -179,13 +229,24 @@ export default function BranchQTest() {
                     </select>
                   </td>
                   <td className="px-4 py-2.5">
-                    <input defaultValue={r.result || ''} onBlur={(e) => { if ((e.target.value || '') !== (r.result || '')) patch(r.seq, 'result', e.target.value) }}
-                      placeholder="결과 입력"
-                      className="w-full px-2.5 py-1.5 text-xs rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-emerald-500/30" />
+                    <select value={resultMode(r)} onChange={(e) => onResultSelect(r, e.target.value)}
+                      className={`appearance-none cursor-pointer pl-3 pr-7 py-1.5 rounded-lg text-xs font-semibold border outline-none focus:ring-2 focus:ring-emerald-400 bg-[length:12px] bg-[right_0.4rem_center] bg-no-repeat w-full ${resultTone(resultMode(r))}`}
+                      style={{ backgroundImage: "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23888' stroke-width='3'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E\")" }}>
+                      <option value="">미선택</option>
+                      <option value={RESULT_MATCH}>데이터일치</option>
+                      <option value={RESULT_MISMATCH}>데이터불일치(신고진행)</option>
+                      <option value="기타">기타(직접입력)</option>
+                    </select>
+                    {resultMode(r) === '기타' && (
+                      <input autoFocus defaultValue={r.result && r.result !== RESULT_MATCH && r.result !== RESULT_MISMATCH ? r.result : ''}
+                        onBlur={(e) => { if ((e.target.value || '') !== (r.result || '')) patch(r.seq, 'result', e.target.value) }}
+                        placeholder="결과 직접 입력"
+                        className="mt-1.5 w-full px-2.5 py-1.5 text-xs rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-slate-400/30" />
+                    )}
                   </td>
                   <td className="px-4 py-2.5">
                     <input defaultValue={r.report || ''} onBlur={(e) => { if ((e.target.value || '') !== (r.report || '')) patch(r.seq, 'report', e.target.value) }}
-                      placeholder="신고 내용"
+                      placeholder="신고했을 경우 내용"
                       className="w-full px-2.5 py-1.5 text-xs rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-amber-500/30" />
                   </td>
                 </tr>
