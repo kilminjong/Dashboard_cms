@@ -42,6 +42,7 @@ const navItems = [
     label: '브랜치Q 고객관리', icon: Rocket, children: [
       { to: '/branchq', label: 'POC 대상고객' },
       { to: '/branchq/status', label: 'POC 진행 현황' },
+      { to: '/branchq/test', label: '브랜치Q 테스트 관리' },
       {
         label: '구글폼 관리', children: [
           { to: '/branchq/form', label: '구글폼 대시보드' },
