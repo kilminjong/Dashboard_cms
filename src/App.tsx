@@ -30,6 +30,7 @@ import GoogleFormDashboard from './pages/GoogleFormDashboard'
 import GoogleFormDetail from './pages/GoogleFormDetail'
 import GoogleFormSend from './pages/GoogleFormSend'
 import GoogleFormSendLog from './pages/GoogleFormSendLog'
+import BranchQTest from './pages/BranchQTest'
 import ProfilePage from './pages/Profile'
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
@@ -91,6 +92,7 @@ export default function App() {
           <Route path="/connections" element={<ConnectionBoard />} />
           <Route path="/branchq" element={<BranchQList />} />
           <Route path="/branchq/status" element={<BranchQStatus />} />
+          <Route path="/branchq/test" element={<BranchQTest />} />
           <Route path="/branchq/voc" element={<BranchQVoc />} />
           <Route path="/branchq/notes" element={<BranchQNotes />} />
           <Route path="/branchq/form" element={<GoogleFormDashboard />} />
